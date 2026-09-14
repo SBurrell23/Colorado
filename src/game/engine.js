@@ -416,7 +416,7 @@ export class Engine {
     const token = s.pending && s.pending.token;
     if (token) {
       this.bag.push(token);
-      this.log(p.name + ' waves ' + article(token) + ' ' + token + ' on into the wild.', 'skip', { by: p.id });
+      this.log(p.name + ' sends ' + article(token) + ' ' + token + ' back to the wild.', 'skip', { by: p.id });
     }
     this.onSfx('cull');
     this.finishTurn(p);

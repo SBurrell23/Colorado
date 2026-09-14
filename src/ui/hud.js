@@ -242,10 +242,8 @@ export class Hud {
       prompt.innerHTML = 'Settle the <strong>' + escapeHtml(a ? ANIMAL_INFO[a].name : 'animal')
         + '</strong> on a tile showing its mark.';
       buttons.appendChild(el('button', {
-        class: 'ghost-btn', text: 'Wave it on',
-        'data-tip-title': 'Send it back to the wild',
-        'data-tip': 'You are never made to settle an animal. A third bighorn spoils a pair and a '
-          + 'second eagle spoils a ridge, so sometimes the best place for one is the bag.',
+        class: 'ghost-btn', text: 'Send back to the wild',
+        'data-tip': 'Send this animal back into the wild without placing it.',
         onclick: () => this.h.onSkipToken(),
       }));
     }
