@@ -12,6 +12,8 @@ import {
 import {
   HEX_DIRS, opposite, hexToWorld, worldToHex, neighbours,
 } from '../src/game/hex.js';
+import { animalGroups, sameNeighbourCount, neighbourAnimals, corridorSizes } from '../src/game/board.js';
+import { ANIMAL_EXAMPLES, habitatExampleData, exampleEnv } from '../src/game/examples.js';
 import { makeRng } from '../src/util/rng.js';
 import { chooseBotMove } from '../src/game/ai.js';
 
@@ -305,6 +307,70 @@ console.log('\nnature tokens');
   check('a keystone tile is offered for the token', e2.state.turnPhase === 'token');
   e2.handle('solo', { t: 'placeToken', q: spot.q, r: spot.r });
   check('settling a keystone earns a nature token', p2.nature === 1, String(p2.nature));
+}
+
+// --- the worked examples in the help sheet ----------------------------------
+// These are the pictures new players learn the rules from, so they are held to
+// the rules themselves rather than to whatever looked right when drawn.
+console.log('\nhelp-sheet examples');
+{
+  const marked = (cells, m) => cells.filter((c) => c.mark === m).map((c) => hexKey(c.q, c.r));
+
+  const sheep = ANIMAL_EXAMPLES.bighorn;
+  const sheepEnv = exampleEnv(sheep.cells);
+  const sheepGroups = animalGroups(sheepEnv, 'bighorn').map((g) => g.length).sort();
+  check('the bighorn example is a pair and a separate three',
+    JSON.stringify(sheepGroups) === '[2,3]', JSON.stringify(sheepGroups));
+  check('its tick is on the pair',
+    animalGroups(sheepEnv, 'bighorn').some((g) => g.length === 2 && g.includes(marked(sheep.cells, '✓')[0])));
+  check('its cross is on the three',
+    animalGroups(sheepEnv, 'bighorn').some((g) => g.length === 3 && g.includes(marked(sheep.cells, '✗')[0])));
+  check('and it scores what the rule card says', scoreBighorn(sheepEnv) === 4, String(scoreBighorn(sheepEnv)));
+
+  const elkEnv = exampleEnv(ANIMAL_EXAMPLES.elk.cells);
+  check('the elk example is a line of four', scoreElk(elkEnv) === 13, String(scoreElk(elkEnv)));
+
+  const trout = ANIMAL_EXAMPLES.trout;
+  const cleanEnv = exampleEnv(trout.cells);
+  check('the trout example is a clean run of four', scoreTrout(cleanEnv) === 12, String(scoreTrout(cleanEnv)));
+  const forkedEnv = exampleEnv(trout.cells, { includeDim: true });
+  check('and the faded trout really would fork it', scoreTrout(forkedEnv) === 0, String(scoreTrout(forkedEnv)));
+
+  const eagle = ANIMAL_EXAMPLES.eagle;
+  const eagleEnv = exampleEnv(eagle.cells);
+  check('the eagle example has exactly two loners', scoreEagle(eagleEnv) === 5, String(scoreEagle(eagleEnv)));
+  for (const k of marked(eagle.cells, '✓')) {
+    const [q, r] = k.split(',').map(Number);
+    check('the ticked eagle at ' + k + ' is alone', sameNeighbourCount(eagleEnv, q, r, 'eagle') === 0);
+  }
+  for (const k of marked(eagle.cells, '✗')) {
+    const [q, r] = k.split(',').map(Number);
+    check('the crossed eagle at ' + k + ' is not', sameNeighbourCount(eagleEnv, q, r, 'eagle') > 0);
+  }
+
+  const coyote = ANIMAL_EXAMPLES.coyote;
+  const coyoteEnv = exampleEnv(coyote.cells);
+  const [ck] = marked(coyote.cells, '✓');
+  const [cq, cr] = ck.split(',').map(Number);
+  const kinds = [...neighbourAnimals(coyoteEnv, cq, cr)].filter((a) => a !== 'coyote');
+  check('the coyote example really has four different neighbours', kinds.length === 4, kinds.join(','));
+  check('and scores four', scoreCoyote(coyoteEnv) === 4, String(scoreCoyote(coyoteEnv)));
+
+  for (const habitat of HABITATS) {
+    const data = habitatExampleData(habitat);
+    const env = exampleEnv(data.cells);
+    const sizes = corridorSizes(env, habitat);
+    check(habitat + ': the numbered run really is a corridor of four',
+      sizes[0] === 4, JSON.stringify(sizes));
+    // Every numbered tile is in that corridor, and the crossed one is not.
+    const numbered = data.cells.filter((c) => /[0-9]/.test(c.mark || ''));
+    check(habitat + ': four tiles are numbered', numbered.length === 4);
+    const reject = data.cells.find((c) => c.mark === '✗');
+    check(habitat + ': the crossed tile shows the habitat', reject.edges.includes(habitat));
+    const without = exampleEnv(data.cells.filter((c) => c !== reject));
+    check(habitat + ': and joining it changes nothing',
+      corridorSizes(without, habitat)[0] === sizes[0]);
+  }
 }
 
 // --- taking a pair back -----------------------------------------------------

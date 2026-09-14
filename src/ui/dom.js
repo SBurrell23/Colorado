@@ -5,6 +5,9 @@ export const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel
 
 export function el(tag, attrs = {}, children = []) {
   const node = document.createElement(tag);
+  // Firefox ignores -webkit-user-drag, and a dragged image leaves the browser's
+  // own drop badge stuck to the cursor.
+  if (tag === 'img') node.draggable = false;
   for (const [k, v] of Object.entries(attrs)) {
     if (v === null || v === undefined || v === false) continue;
     if (k === 'class') node.className = v;

@@ -1,7 +1,7 @@
 // Every player's environment, laid out side by side in the meadow.
 
 import * as THREE from 'three';
-import { hexToWorld, worldToHex, hexKey, parseHexKey } from '../game/hex.js';
+import { hexToWorld, worldToHex, hexKey, parseHexKey, neighbours } from '../game/hex.js';
 import { makeTileTexture, makeTokenTexture, createCanvas } from './tileart.js';
 
 export const HEX_R = 1.65;          // centre to corner
@@ -11,6 +11,9 @@ export const TILE_H = 0.34;
 // further from the camera.
 export const BOARD_GAP_ACROSS = 42;
 export const BOARD_GAP_BACK = 40;
+// Half the smaller gap, less a shade: inside this a hex belongs to one board
+// and no other, whatever the layout.
+const PICK_RADIUS = 19;
 
 const texCache = new Map();
 function tileTexture(tile) {
@@ -110,6 +113,15 @@ export class BoardView {
     // Hex prism with its corners where the art expects them.
     this.hexGeo = new THREE.CylinderGeometry(HEX_R, HEX_R * 0.97, TILE_H, 6, 1, false, Math.PI / 6);
     this.tokenGeo = new THREE.CylinderGeometry(HEX_R * 0.32, HEX_R * 0.32, 0.15, 20);
+
+    // One invisible sheet for every board; see pick().
+    this.pickPlane = new THREE.Mesh(
+      new THREE.PlaneGeometry(600, 600),
+      new THREE.MeshBasicMaterial({ visible: false }),
+    );
+    this.pickPlane.rotation.x = -Math.PI / 2;
+    this.pickPlane.position.y = TILE_H / 2;
+    this.root.add(this.pickPlane);
     this.sideMat = new THREE.MeshStandardMaterial({ color: 0x8a7a5c, roughness: 0.92 });
   }
 
@@ -152,18 +164,8 @@ export class BoardView {
     label.position.set(-14.6, 2.6, 0);
     group.add(label);
 
-    // Invisible sheet used to turn a mouse ray into a hex on this board.
-    const pick = new THREE.Mesh(
-      new THREE.PlaneGeometry(70, 70),
-      new THREE.MeshBasicMaterial({ visible: false }),
-    );
-    pick.rotation.x = -Math.PI / 2;
-    pick.position.y = TILE_H / 2;
-    pick.userData.playerId = player.id;
-    group.add(pick);
-
     this.root.add(group);
-    board = { group, origin, tiles: new Map(), label, plate, pick, colour: player.colour };
+    board = { group, origin, tiles: new Map(), label, plate, colour: player.colour };
     this.boards.set(player.id, board);
     return board;
   }
@@ -322,17 +324,37 @@ export class BoardView {
   }
 
   // -- picking -------------------------------------------------------------
-  /** Which board and hex the ray lands on, if any. */
+  /**
+   * Which board and hex the ray lands on, if any.
+   *
+   * One sheet over the whole meadow, then the nearest board wins. Each board
+   * used to carry its own 70-unit pick plane, which was wider than the gap
+   * between boards: the planes overlapped, the raycaster returned whichever
+   * happened to be nearest the camera, and reaching for the far edge of a big
+   * tableau would land you on a neighbour's land instead.
+   */
   pick(raycaster) {
-    const planes = [];
-    for (const [, board] of this.boards) planes.push(board.pick);
-    const hit = raycaster.intersectObjects(planes, false)[0];
+    const hit = raycaster.intersectObject(this.pickPlane, false)[0];
     if (!hit) return null;
-    const playerId = hit.object.userData.playerId;
-    const board = this.boards.get(playerId);
-    const local = hit.point.clone().sub(board.origin);
-    const { q, r } = worldToHex(local.x, local.z, HEX_R);
-    return { playerId, q, r };
+
+    let best = null;
+    for (const [id, board] of this.boards) {
+      const x = hit.point.x - board.origin.x;
+      const z = hit.point.z - board.origin.z;
+      const { q, r } = worldToHex(x, z, HEX_R);
+      // A hex that is already this board's, or touching it, belongs to this
+      // board however far it has sprawled from its middle. That beats distance:
+      // a long tableau can easily reach past halfway to its neighbour.
+      const rank = board.tiles.has(hexKey(q, r))
+        || neighbours(q, r).some((n) => board.tiles.has(hexKey(n.q, n.r))) ? 0 : 1;
+      const d = Math.hypot(x, z);
+      if (!best || rank < best.rank || (rank === best.rank && d < best.d)) {
+        best = { id: id, q, r, d, rank };
+      }
+    }
+    // Rank 1 is open meadow near a board; past a point it is nobody's land.
+    if (!best || (best.rank === 1 && best.d > PICK_RADIUS)) return null;
+    return { playerId: best.id, q: best.q, r: best.r };
   }
 
   /** The middle of a player's board, for the camera to settle on. */

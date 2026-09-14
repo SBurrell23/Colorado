@@ -7,6 +7,7 @@
 
 import { createCanvas, drawAnimal } from './tileart.js';
 import { HABITAT_INFO, ANIMAL_INFO } from '../game/tiles.js';
+import { ANIMAL_EXAMPLES, habitatExampleData } from '../game/examples.js';
 
 // The board is seen with world +x up the screen and +z across it, so a hex at
 // axial (q, r) lands here. Same maths as hexToWorld, in canvas axes.
@@ -35,10 +36,10 @@ function hexPath(ctx, cx, cy, size) {
 // Half 0 carries edges 0-2, half 1 edges 3-5 -- the same split the real tiles
 // use, so a diagram of a split tile is a picture of an actual tile.
 const HALVES = [[60, 0, -60, -120], [-120, 180, 120, 60]];
-function halfPath(ctx, cx, cy, size, which) {
+function halfPath(ctx, cx, cy, size, which, rot) {
   ctx.beginPath();
   HALVES[which].forEach((deg, i) => {
-    const [x, y] = at(cx, cy, size, deg);
+    const [x, y] = at(cx, cy, size, deg - rot * 60);
     if (i) ctx.lineTo(x, y); else ctx.moveTo(x, y);
   });
   ctx.closePath();
@@ -61,15 +62,30 @@ export function makeDiagram(cells, opts = {}) {
   const maxY = Math.max(...ys) + size;
 
   const CAPTION_FONT = '600 13px Inter, system-ui, sans-serif';
+  const LINE_H = 17;
   let w = Math.ceil(maxX - minX + pad * 2);
+  let caption = [];
   if (opts.caption) {
-    // The caption is often wider than the hexes it explains, and a clipped
-    // sentence is worse than no sentence.
+    // The caption wraps rather than stretching the canvas: a diagram wide
+    // enough to hold one long sentence gets scaled down in the tooltip until
+    // the sentence is unreadable anyway.
     const m = createCanvas(8, 8).getContext('2d');
     m.font = CAPTION_FONT;
-    w = Math.max(w, Math.ceil(m.measureText(opts.caption).width) + 18);
+    const limit = Math.max(w, 300);
+    let cur = '';
+    for (const word of opts.caption.split(' ')) {
+      const next = cur ? cur + ' ' + word : word;
+      if (cur && m.measureText(next).width > limit) {
+        caption.push(cur);
+        cur = word;
+      } else {
+        cur = next;
+      }
+    }
+    if (cur) caption.push(cur);
+    w = Math.max(w, ...caption.map((l) => Math.ceil(m.measureText(l).width) + 18));
   }
-  const h = Math.ceil(maxY - minY + pad * 2) + (opts.caption ? 22 : 0);
+  const h = Math.ceil(maxY - minY + pad * 2) + caption.length * LINE_H + (caption.length ? 8 : 0);
   const c = createCanvas(w, h);
   const ctx = c.getContext('2d');
   const ox = (w - (maxX - minX)) / 2 - minX;
@@ -82,6 +98,7 @@ export function makeDiagram(cells, opts = {}) {
 
     ctx.save();
     ctx.globalAlpha = cell.dim ? 0.34 : 1;
+    const rot = cell.rot || 0;
     const paint = (which, habitat) => {
       const hi = HABITAT_INFO[habitat];
       const g = ctx.createLinearGradient(0, cy - size, 0, cy + size);
@@ -89,19 +106,21 @@ export function makeDiagram(cells, opts = {}) {
       g.addColorStop(1, hi.deep);
       ctx.save();
       if (which === null) hexPath(ctx, cx, cy, size);
-      else halfPath(ctx, cx, cy, size, which);
+      else halfPath(ctx, cx, cy, size, which, rot);
       ctx.clip();
       ctx.fillStyle = g;
       ctx.fillRect(cx - size * 1.2, cy - size * 1.2, size * 2.4, size * 2.4);
       ctx.restore();
     };
 
-    if (cell.edges) {
-      paint(0, cell.edges[0]);
-      paint(1, cell.edges[3]);
+    if (cell.habitats) {
+      // The halves are turned with the tile, exactly as the real art is, so
+      // the colour on an edge is the habitat that edge actually offers.
+      paint(0, cell.habitats[0]);
+      paint(1, cell.habitats[1]);
       // The seam, so the two halves read as one tile rather than two.
-      const [ax, ay] = at(cx, cy, size, 60);
-      const [bx, by] = at(cx, cy, size, -120);
+      const [ax, ay] = at(cx, cy, size, 60 - rot * 60);
+      const [bx, by] = at(cx, cy, size, -120 - rot * 60);
       ctx.strokeStyle = 'rgba(28,38,30,0.4)';
       ctx.lineWidth = Math.max(1, size * 0.05);
       ctx.beginPath();
@@ -151,126 +170,56 @@ export function makeDiagram(cells, opts = {}) {
     }
     ctx.restore();
 
+    // Marks go on a chip inside the tile they belong to. Hung off the corner
+    // they used to be ambiguous between neighbours, and the outermost ones ran
+    // off the edge of the canvas.
     if (cell.mark) {
+      const mx = cx + size * 0.3;
+      const my = cy - size * 0.46;
+      const rad = size * 0.27;
+      const bad = cell.mark === '✗';
       ctx.save();
-      ctx.font = '700 ' + Math.round(size * 0.66) + 'px Inter, system-ui, sans-serif';
+      ctx.beginPath();
+      ctx.arc(mx, my, rad, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(10,17,13,0.88)';
+      ctx.fill();
+      ctx.strokeStyle = bad ? '#ff9a86' : '#8ce08a';
+      ctx.lineWidth = Math.max(1.4, size * 0.07);
+      ctx.stroke();
+      ctx.font = '700 ' + Math.round(size * (cell.mark.length > 1 ? 0.3 : 0.38)) + 'px Inter, system-ui, sans-serif';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      const good = cell.mark === '✓';
-      ctx.strokeStyle = 'rgba(12,20,16,0.85)';
-      ctx.lineWidth = size * 0.16;
-      ctx.strokeText(cell.mark, cx + size * 0.62, cy - size * 0.62);
-      ctx.fillStyle = good ? '#8ce08a' : '#ff9a86';
-      ctx.fillText(cell.mark, cx + size * 0.62, cy - size * 0.62);
+      ctx.fillStyle = bad ? '#ff9a86' : '#8ce08a';
+      ctx.fillText(cell.mark, mx, my + size * 0.015);
       ctx.restore();
     }
   }
 
-  if (opts.caption) {
+  if (caption.length) {
     ctx.font = CAPTION_FONT;
     ctx.textAlign = 'center';
+    ctx.textBaseline = 'alphabetic';
     ctx.fillStyle = '#e8c65a';
-    ctx.fillText(opts.caption, w / 2, h - 7);
+    caption.forEach((lineText, i) => {
+      ctx.fillText(lineText, w / 2, h - 7 - (caption.length - 1 - i) * LINE_H);
+    });
   }
   return c;
 }
 
-const line = (n, q0, r0, dq, dr, cell) => {
-  const out = [];
-  for (let i = 0; i < n; i++) out.push({ q: q0 + dq * i, r: r0 + dr * i, ...cell(i) });
-  return out;
-};
-
-const HABS = ['peak', 'aspen', 'prairie', 'marsh', 'river'];
-const filler = (i) => HABS[(i * 2 + 1) % HABS.length];
-
 /** Worked example for one animal's scoring rule. */
 export function animalExample(animal) {
-  switch (animal) {
-    case 'bighorn':
-      return makeDiagram([
-        { q: 0, r: 0, habitat: 'peak', animal: 'bighorn', mark: '✓' },
-        { q: 0, r: 1, habitat: 'peak', animal: 'bighorn' },
-        { q: 1, r: 0, habitat: 'prairie' },
-        { q: 1, r: 1, habitat: 'aspen', animal: 'bighorn', mark: '✗' },
-        { q: 2, r: 1, habitat: 'marsh', animal: 'bighorn' },
-        { q: 2, r: 2, habitat: 'river', animal: 'bighorn' },
-      ], { caption: 'A pair scores. Three in a clump score nothing.' });
-
-    case 'elk':
-      return makeDiagram(
-        line(4, 0, 0, 0, 1, (i) => ({ habitat: filler(i), animal: 'elk', mark: i === 0 ? '✓' : null }))
-          .concat([{ q: 1, r: 1, habitat: 'prairie' }, { q: -1, r: 2, habitat: 'aspen' }]),
-        { caption: 'A straight line of four — the best an elk line pays.' },
-      );
-
-    case 'trout':
-      return makeDiagram([
-        { q: 0, r: 0, habitat: 'river', animal: 'trout', mark: '✓' },
-        { q: 0, r: 1, habitat: 'river', animal: 'trout' },
-        { q: 1, r: 1, habitat: 'river', animal: 'trout' },
-        { q: 1, r: 2, habitat: 'marsh', animal: 'trout' },
-        { q: 2, r: 1, habitat: 'river', animal: 'trout', mark: '✗' },
-        { q: -1, r: 1, habitat: 'peak' },
-      ], { caption: 'A run of five — but a trout touching three others kills it.' });
-
-    case 'eagle':
-      return makeDiagram([
-        { q: 0, r: 0, habitat: 'marsh', animal: 'eagle', mark: '✓' },
-        { q: 0, r: 2, habitat: 'peak', animal: 'eagle', mark: '✓' },
-        { q: 1, r: 0, habitat: 'prairie' },
-        { q: 1, r: 1, habitat: 'river' },
-        { q: 2, r: 0, habitat: 'aspen', animal: 'eagle', mark: '✗' },
-        { q: 2, r: 1, habitat: 'marsh', animal: 'eagle' },
-      ], { caption: 'Two eagles alone score. The pair beside each other does not.' });
-
-    case 'coyote':
-      return makeDiagram([
-        { q: 0, r: 0, habitat: 'prairie', animal: 'coyote', mark: '✓' },
-        { q: -1, r: 0, habitat: 'peak', animal: 'bighorn' },
-        { q: -1, r: 1, habitat: 'aspen', animal: 'elk' },
-        { q: 0, r: 1, habitat: 'river', animal: 'trout' },
-        { q: 1, r: 0, habitat: 'marsh', animal: 'eagle' },
-        { q: 1, r: -1, habitat: 'prairie' },
-        { q: 0, r: -1, habitat: 'aspen' },
-      ], { caption: 'Four different neighbours: four points for this coyote.' });
-
-    default:
-      return makeDiagram([{ q: 0, r: 0, habitat: 'prairie' }]);
-  }
+  const ex = ANIMAL_EXAMPLES[animal];
+  if (!ex) return makeDiagram([{ q: 0, r: 0, habitat: 'prairie' }]);
+  return makeDiagram(ex.cells, { caption: ex.caption });
 }
 
-/**
- * Split tiles are where corridors are actually won and lost, so the example
- * is built out of them: a run of four that has to bend to keep the habitat on
- * both sides of every join, and a fifth tile that shows the habitat but is
- * met by the wrong half of its neighbour.
- *
- * A half covers three consecutive edges, so a corridor can never run straight
- * through a split tile along one axis -- it must turn. That is the whole
- * lesson, and it is far easier to see than to read.
- */
+/** Worked example of a corridor, built out of split tiles. */
 export function habitatExample(habitat) {
-  const name = (HABITAT_INFO[habitat] || {}).short || 'Habitat';
-  // Pair each habitat with one that does not look like it, or the split is
-  // invisible and the diagram teaches nothing.
-  const other = { peak: 'aspen', aspen: 'river', prairie: 'peak', marsh: 'prairie', river: 'aspen' }[habitat];
-  // rot places the habitat on edges rot, rot+1, rot+2.
-  const split = (rot) => {
-    const edges = new Array(6);
-    for (let i = 0; i < 6; i++) {
-      const base = (i - rot + 6) % 6;
-      edges[i] = base < 3 ? habitat : other;
-    }
-    return edges;
-  };
-
-  const low = name.toLowerCase();
-  return makeDiagram([
-    { q: 0, r: 0, edges: split(5), joins: [5] },
-    { q: 0, r: 1, edges: split(1), joins: [2, 1] },
-    { q: 1, r: 0, edges: split(3), joins: [4, 5] },
-    { q: 1, r: 1, edges: split(2), joins: [2], mark: '✓' },
-    { q: 1, r: 2, edges: split(2), mark: '✗' },
-  ], { caption: 'A run of 4. The last tile shows ' + low + ' too, but the halves that meet do not.' });
+  const data = habitatExampleData(habitat);
+  const low = (HABITAT_INFO[habitat] || {}).short.toLowerCase();
+  return makeDiagram(data.cells, {
+    caption: 'A ' + low + ' corridor of 4. The last tile shows ' + low
+      + ' too, but the halves that meet do not.',
+  });
 }

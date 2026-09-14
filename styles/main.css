@@ -21,6 +21,19 @@
 
 * { box-sizing: border-box; }
 
+/* Dragging on the board used to start a text selection or an image drag, and
+   the browser hung its drag-and-drop badge off the cursor while it did. The
+   chat and the field notes stay selectable so a code can still be copied. */
+body, #hud, #screens, .modal, .tooltip {
+  user-select: none;
+  -webkit-user-select: none;
+}
+#log-list, #chat-list, #lobby-chat-list, .code-row strong, .help-pane, .rule-text, .prompt {
+  user-select: text;
+  -webkit-user-select: text;
+}
+img, canvas, svg { -webkit-user-drag: none; user-drag: none; }
+
 /* A little pine, forest green, the size of the arrow it replaces. The hotspot
    is the tip of the tree, so it points like a normal cursor does. */
 :root {
@@ -437,7 +450,7 @@ kbd {
   pointer-events: none; display: grid; gap: 3px; grid-template-columns: minmax(0, 1fr);
   animation: tip-in 0.13s ease both;
 }
-.tooltip.rich { max-width: 340px; }
+.tooltip.rich { max-width: 378px; }
 .tooltip .tip-lines { display: grid; gap: 3px; font-size: 0.86rem; line-height: 1.38; color: var(--ink); }
 .tooltip .tip-diagram {
   display: block; margin: 5px auto 1px; max-width: 100%; height: auto; justify-self: center;
