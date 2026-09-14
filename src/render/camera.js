@@ -7,7 +7,11 @@ const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 
 export class BoardCamera {
   constructor(target) {
-    this.camera = new THREE.PerspectiveCamera(56, 1, 0.1, 1200);
+    // A 0.1 near plane against a 1200 far plane throws away most of the depth
+    // buffer's precision on the first metre of nothing. The camera never gets
+    // within ten units of the boards and the sky sphere is 700 out, so this
+    // range costs nothing and is worth a hundredfold in precision.
+    this.camera = new THREE.PerspectiveCamera(56, 1, 0.5, 1000);
 
     this.target = target.clone();
     this.goalTarget = target.clone();

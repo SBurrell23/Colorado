@@ -168,7 +168,13 @@ kbd {
   -webkit-background-clip: text; background-clip: text; color: transparent;
   filter: drop-shadow(0 3px 14px rgba(232, 198, 90, 0.3));
 }
-.tagline { margin: 0 0 6px; color: var(--ink-dim); font-size: 1.02rem; }
+/* The C of the state flag, standing in for the letter it replaces. */
+.title-wrap h1 { display: flex; align-items: baseline; justify-content: center; gap: 0.02em; }
+.flag-c {
+  width: 0.86em; height: 0.86em;
+  align-self: center; margin-bottom: 0.06em;
+  filter: drop-shadow(0 3px 10px rgba(0, 0, 0, 0.45));
+}
 
 .field { display: grid; gap: 6px; text-align: left; width: min(320px, 100%); }
 .field > span { font-size: 0.74rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink-dim); }

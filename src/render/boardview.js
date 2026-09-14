@@ -155,10 +155,19 @@ export class BoardView {
       new THREE.CircleGeometry(18.5, 6),
       new THREE.MeshStandardMaterial({
         color: 0xa39b70, roughness: 1, transparent: true, opacity: 0.3,
+        // The mat lies all but flat on the meadow, so at any distance the two
+        // surfaces land in the same depth bucket and flicker against each
+        // other as the camera moves. This settles it outright: the mat is
+        // always resolved in front, whatever the depth buffer thinks.
+        polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -8,
+        depthWrite: false,
       }),
     );
     plate.rotation.x = -Math.PI / 2;
-    plate.position.y = -0.32;
+    plate.position.y = -0.3;
+    // Bottom of the transparent pile: the mat is the thing everything else in
+    // the scene sits on top of, so it never has to be sorted against anything.
+    plate.renderOrder = -2;
     plate.receiveShadow = this.quality.shadows;
     group.add(plate);
 

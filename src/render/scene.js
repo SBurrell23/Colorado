@@ -21,6 +21,21 @@ function canvasTexture(canvas, repeat, wrap = true) {
   return t;
 }
 
+// Every place a board mat can end up, for any party from one to nine: board
+// origins always land on this lattice (see boardOrigin), and a mat reaches
+// 18.5 from its middle. Trees and ground litter both keep clear of it.
+const SEAT_X = [-40, -20, 0, 20, 40];
+const SEAT_Z = [-42, -21, 0, 21, 42];
+const MAT_CLEARANCE = 23;
+function onAMat(x, z) {
+  for (const sx of SEAT_X) {
+    for (const sz of SEAT_Z) {
+      if (Math.hypot(x - sx, z - sz) < MAT_CLEARANCE) return true;
+    }
+  }
+  return false;
+}
+
 /** A 360-degree panorama: sky above, three ranges of peaks along the horizon. */
 function makeSkyPanorama(w = 2048, h = 1024) {
   const c = createCanvas(w, h);
@@ -268,8 +283,10 @@ export class World {
 
     // The clearing has to hold six boards side by side, so it is an ellipse
     // rather than a circle: wider across than it is deep.
-    const CLEAR_X = 78;
-    const CLEAR_Z = 60;
+    // Wide enough that six mats, which reach z = 60 and x = 58, sit well inside
+    // the tree line. The per-seat test below is what actually guarantees it.
+    const CLEAR_X = 86;
+    const CLEAR_Z = 80;
     const FAR = 620;   // runs well past the fog, so the tree line dissolves
 
     const pines = [];
@@ -285,6 +302,7 @@ export class World {
       const x = Math.cos(a) * CLEAR_X * ring + (Math.random() - 0.5) * 9;
       const z = Math.sin(a) * CLEAR_Z * ring + (Math.random() - 0.5) * 9;
       if (Math.abs(x) < CLEAR_X * 0.94 && Math.abs(z) < CLEAR_Z * 0.94) continue;
+      if (onAMat(x, z)) continue;
       const s = 2.1 + Math.pow(Math.random(), 1.4) * 3.9;
       const rot = Math.random() * Math.PI * 2;
       (Math.random() < 0.22 ? aspens : pines).push({ x, z, s, rot });
@@ -370,13 +388,6 @@ export class World {
     this.disposeLitter();
     const count = Math.round(this.quality.treeCount * 0.55);
     if (!count) return;
-
-    // Every possible board centre, for any layout from one player to nine.
-    const seats = [];
-    for (const x of [-40, -20, 0, 20, 40]) {
-      for (const z of [-42, -21, 0, 21, 42]) seats.push([x, z]);
-    }
-    const onAMat = (x, z) => seats.some(([sx, sz]) => Math.hypot(x - sx, z - sz) < 19.5);
 
     const rocks = [];
     const shrubs = [];
@@ -480,12 +491,21 @@ export class World {
     const map = canvasTexture(makePuff(256));
     for (let i = 0; i < 14; i++) {
       const s = new THREE.Sprite(new THREE.SpriteMaterial({
-        map, transparent: true, depthWrite: false, opacity: 0.28 + Math.random() * 0.3,
+        // Sky, not weather: they belong with the painted range beyond the fog,
+        // so they do not fade into it.
+        map, transparent: true, depthWrite: false, fog: false,
+        opacity: 0.26 + Math.random() * 0.28,
       }));
+      // High and far. They used to sit at 70 to 120 units up on a 150-unit
+      // ring, which put the camera inside the weather at full zoom-out: clouds
+      // drifted between the view and the boards and flickered against the mats
+      // as the transparent sort order swapped. The camera tops out at about
+      // 159 up, so nothing below 170 is safe.
       const a = Math.random() * Math.PI * 2;
-      const ring = 150 + Math.random() * 220;
-      s.position.set(Math.cos(a) * ring, 70 + Math.random() * 50, Math.sin(a) * ring);
-      const sc = 55 + Math.random() * 80;
+      const ring = 420 + Math.random() * 220;
+      s.position.set(Math.cos(a) * ring, 175 + Math.random() * 85, Math.sin(a) * ring);
+      s.renderOrder = 2;
+      const sc = 150 + Math.random() * 170;
       s.scale.set(sc, sc * 0.42, 1);
       s.userData.drift = 0.5 + Math.random();
       this.clouds.push(s);
@@ -508,7 +528,7 @@ export class World {
     if (camera) this.sky.position.copy(camera.position);
     for (const c of this.clouds) {
       c.position.x += c.userData.drift * dt * 0.8;
-      if (c.position.x > 380) c.position.x = -380;
+      if (c.position.x > 700) c.position.x = -700;
     }
   }
 }
