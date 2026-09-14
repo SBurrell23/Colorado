@@ -148,9 +148,11 @@ export class BoardView {
     const origin = boardOrigin(index, count);
     group.position.copy(origin);
 
-    // A worn mat under each board so the boards read as separate places.
+    // A worn mat under each board so the boards read as separate places. Six
+    // sides, aligned with the tiles that land on it -- a circle was fighting
+    // the only shape this game has.
     const plate = new THREE.Mesh(
-      new THREE.CircleGeometry(16.5, 48),
+      new THREE.CircleGeometry(18.5, 6),
       new THREE.MeshStandardMaterial({
         color: 0xa39b70, roughness: 1, transparent: true, opacity: 0.3,
       }),

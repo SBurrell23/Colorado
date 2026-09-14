@@ -254,6 +254,8 @@ kbd {
   border-radius: 9px; padding: 0.14em 0.5em 0.14em 0.36em; line-height: 1.25; cursor: inherit;
 }
 .nature-mark { width: 1.05em; height: 1.05em; object-fit: contain; vertical-align: -0.16em; }
+.nature-mark.lg { width: 1.5em; height: 1.5em; vertical-align: -0.3em; }
+.with-mark { display: flex; align-items: center; gap: 8px; }
 .p-nature .nature-mark { width: 13px; height: 13px; }
 
 .timer-wrap { height: 4px; border-radius: 3px; background: rgba(255,255,255,0.12); overflow: hidden; }
@@ -463,6 +465,9 @@ kbd {
   width: 9px; height: 9px; margin-left: -5px; background: rgba(38, 56, 48, 0.97);
   border-left: 1px solid var(--edge); border-top: 1px solid var(--edge); transform: rotate(45deg);
 }
+/* A tooltip pinned to the cursor has nothing to point at, and its little
+   rotated arrow was left floating beside the pointer as a stray green box. */
+.tooltip.at-point::after { display: none; }
 .tooltip.above::after {
   top: auto; bottom: -5px; border-left: none; border-top: none;
   border-right: 1px solid var(--edge); border-bottom: 1px solid var(--edge);

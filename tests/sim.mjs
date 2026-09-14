@@ -356,21 +356,28 @@ console.log('\nhelp-sheet examples');
   check('the coyote example really has four different neighbours', kinds.length === 4, kinds.join(','));
   check('and scores four', scoreCoyote(coyoteEnv) === 4, String(scoreCoyote(coyoteEnv)));
 
+  // Each habitat teaches a different lesson about corridors, and each one
+  // states the run lengths the rules should find in it.
+  const shapes = new Set();
   for (const habitat of HABITATS) {
     const data = habitatExampleData(habitat);
     const env = exampleEnv(data.cells);
-    const sizes = corridorSizes(env, habitat);
-    check(habitat + ': the numbered run really is a corridor of four',
-      sizes[0] === 4, JSON.stringify(sizes));
-    // Every numbered tile is in that corridor, and the crossed one is not.
-    const numbered = data.cells.filter((c) => /[0-9]/.test(c.mark || ''));
-    check(habitat + ': four tiles are numbered', numbered.length === 4);
-    const reject = data.cells.find((c) => c.mark === '✗');
-    check(habitat + ': the crossed tile shows the habitat', reject.edges.includes(habitat));
-    const without = exampleEnv(data.cells.filter((c) => c !== reject));
-    check(habitat + ': and joining it changes nothing',
-      corridorSizes(without, habitat)[0] === sizes[0]);
+    for (const [h, want] of Object.entries(data.expect)) {
+      const got = corridorSizes(env, h);
+      check(habitat + ': ' + h + ' runs are ' + want.join('+'),
+        JSON.stringify(got) === JSON.stringify(want), JSON.stringify(got));
+    }
+    // The numbered tiles walk the longest run, so there should be as many of
+    // them as that run is long.
+    const numbered = data.cells.filter((c) => /^[0-9]$/.test(c.mark || ''));
+    if (numbered.length) {
+      check(habitat + ': the numbers walk the whole run',
+        numbered.length === data.expect[habitat][0], String(numbered.length));
+    }
+    shapes.add(data.cells.map((c) => c.q + ',' + c.r + ':' + (c.rot === undefined ? 'w' : c.rot)).join('|'));
   }
+  check('all five corridor examples are different shapes', shapes.size === HABITATS.length,
+    String(shapes.size));
 }
 
 // --- taking a pair back -----------------------------------------------------

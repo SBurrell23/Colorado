@@ -108,7 +108,9 @@ const HABITAT_PAINTERS = {
   },
 
   aspen(ctx, S) {
-    fillBase(ctx, S, '#f0d688', '#c9a43f');
+    // Deliberately warmer and more orange than the prairie's dry straw: side
+    // by side on a board the two were reading as the same habitat.
+    fillBase(ctx, S, '#f2b950', '#b86a22');
     // Slim white trunks with dark eyes, gold canopy above.
     for (let i = 0; i < 11; i++) {
       const x = S * (0.08 + (i * 0.085) % 0.86) + (i % 2) * S * 0.02;
@@ -123,14 +125,29 @@ const HABITAT_PAINTERS = {
         ctx.fillRect(x + w * 0.1, top + S * (0.12 + e * 0.17) + (i % 4) * S * 0.02, w * 0.5, S * 0.018);
       }
     }
+    // A canopy of turning leaves: gold through amber to rust. This is the
+    // whole point of an aspen grove in autumn, and it is what tells the tile
+    // apart from the prairie at a glance.
+    const LEAF = ['#ffe07a', '#ffc24a', '#f59a2e', '#e2711d', '#c44f18'];
     ctx.save();
-    ctx.globalAlpha = 0.55;
-    for (let i = 0; i < 26; i++) {
+    ctx.globalAlpha = 0.9;
+    for (let i = 0; i < 64; i++) {
       const x = Math.random() * S;
-      const y = Math.random() * S * 0.5;
-      ctx.fillStyle = ['#ffe27a', '#f3c74d', '#e0aa34'][i % 3];
+      const y = Math.random() * S * 0.62;
+      const r = S * (0.03 + Math.random() * 0.035);
+      ctx.fillStyle = LEAF[i % LEAF.length];
       ctx.beginPath();
-      ctx.ellipse(x, y, S * 0.045, S * 0.032, Math.random(), 0, Math.PI * 2);
+      ctx.ellipse(x, y, r, r * 0.72, Math.random() * Math.PI, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    // A few fallen among the trunks, so the ground reads as a grove floor.
+    ctx.globalAlpha = 0.72;
+    for (let i = 0; i < 18; i++) {
+      const x = Math.random() * S;
+      const y = S * (0.6 + Math.random() * 0.36);
+      ctx.fillStyle = LEAF[(i + 2) % LEAF.length];
+      ctx.beginPath();
+      ctx.ellipse(x, y, S * 0.028, S * 0.016, Math.random() * Math.PI, 0, Math.PI * 2);
       ctx.fill();
     }
     ctx.restore();

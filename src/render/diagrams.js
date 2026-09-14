@@ -97,7 +97,7 @@ export function makeDiagram(cells, opts = {}) {
     const cy = p.y + oy;
 
     ctx.save();
-    ctx.globalAlpha = cell.dim ? 0.34 : 1;
+    ctx.globalAlpha = cell.dim ? 0.34 : (cell.dimTile ? 0.5 : 1);
     const rot = cell.rot || 0;
     const paint = (which, habitat) => {
       const hi = HABITAT_INFO[habitat];
@@ -137,8 +137,9 @@ export function makeDiagram(cells, opts = {}) {
     ctx.stroke();
 
     // A bright bar laid across every edge where two tiles actually join. It
-    // is the join, not the tile, that makes a corridor.
-    for (const dir of cell.joins || []) {
+    // is the join, not the tile, that makes a corridor. joinsB is a second
+    // corridor in another habitat running through the same tile.
+    const bar = (dir, colour) => {
       const mid = 30 - dir * 60;
       const [ax, ay] = at(cx, cy, size * 0.97, mid + 30);
       const [bx, by] = at(cx, cy, size * 0.97, mid - 30);
@@ -149,13 +150,15 @@ export function makeDiagram(cells, opts = {}) {
       ctx.moveTo(ax, ay);
       ctx.lineTo(bx, by);
       ctx.stroke();
-      ctx.strokeStyle = '#f7e6ae';
+      ctx.strokeStyle = colour;
       ctx.lineWidth = size * 0.17;
       ctx.beginPath();
       ctx.moveTo(ax, ay);
       ctx.lineTo(bx, by);
       ctx.stroke();
-    }
+    };
+    for (const dir of cell.joins || []) bar(dir, '#f7e6ae');
+    for (const dir of cell.joinsB || []) bar(dir, '#caa6ff');
 
     if (cell.animal) {
       const a = ANIMAL_INFO[cell.animal];
@@ -214,12 +217,8 @@ export function animalExample(animal) {
   return makeDiagram(ex.cells, { caption: ex.caption });
 }
 
-/** Worked example of a corridor, built out of split tiles. */
+/** Worked example of a corridor -- a different lesson for each habitat. */
 export function habitatExample(habitat) {
   const data = habitatExampleData(habitat);
-  const low = (HABITAT_INFO[habitat] || {}).short.toLowerCase();
-  return makeDiagram(data.cells, {
-    caption: 'A ' + low + ' corridor of 4. The last tile shows ' + low
-      + ' too, but the halves that meet do not.',
-  });
+  return makeDiagram(data.cells, { caption: data.caption });
 }

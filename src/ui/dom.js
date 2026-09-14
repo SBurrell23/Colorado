@@ -107,6 +107,8 @@ export function openModal({ title, body, actions = [], dismissable = true, onClo
       },
     }));
   }
+  // A sheet you only ever read needs no footer; the corner cross is enough.
+  show(act, actions.length > 0);
   show($('#modal-close'), dismissable);
   modal.root.classList.remove('hidden');
   modal.open = true;
@@ -192,7 +194,7 @@ export function showTip(target, text, title, body) {
   tipTarget = target;
   tipAt = null;
   fillTip(text, title, body);
-  tipNode.classList.remove('hidden');
+  tipNode.classList.remove('hidden', 'at-point');
   placeTip();
 }
 
@@ -204,6 +206,7 @@ export function showTipAt(x, y, text, title, body) {
   tipAt = { x, y };
   fillTip(text, title, body);
   tipNode.classList.remove('hidden');
+  tipNode.classList.add('at-point');
   placeTip();
 }
 

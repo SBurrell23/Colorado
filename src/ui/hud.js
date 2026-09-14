@@ -160,8 +160,19 @@ export class Hud {
     const bar = $('#action-bar');
     if (!v || v.phase !== 'playing' || !v.you) { show(bar, false); return; }
     const mine = v.currentPlayerId === v.you.id;
-    show(bar, mine);
-    if (!mine) return;
+    const cur = v.players.find((p) => p.id === v.currentPlayerId);
+    // While somebody else is placing, the strip shows the pair they are
+    // holding, so say whose it is rather than leaving it to be guessed at.
+    const watching = !mine && v.turnPhase !== 'draft' && v.pending && cur;
+    show(bar, mine || !!watching);
+    if (!mine) {
+      if (watching) {
+        clear($('#action-buttons'));
+        $('#action-prompt').innerHTML = '<strong>' + escapeHtml(cur.name) + '</strong> is holding this '
+          + (v.turnPhase === 'tile' ? 'tile.' : 'animal.');
+      }
+      return;
+    }
 
     const prompt = $('#action-prompt');
     const buttons = clear($('#action-buttons'));
@@ -344,7 +355,9 @@ function wireExamples(root) {
 }
 
 // ---------------------------------------------------------------------------
-export function openScoring() {
+/** The full scoring reference, as an element -- the modal and the How to Play
+ *  sheet both show this rather than each keeping its own half-version. */
+export function scoringSheet() {
   const body = el('div');
   body.appendChild(el('p', {
     class: 'muted',
@@ -373,7 +386,10 @@ export function openScoring() {
     HABITAT_INFO[h].name,
   ]))));
 
-  body.appendChild(el('h3', { text: 'Nature tokens' }));
+  body.appendChild(el('h3', { class: 'with-mark' }, [
+    el('img', { class: 'nature-mark lg', src: natureGlyph(40), alt: '' }),
+    'Nature tokens',
+  ]));
   body.appendChild(el('p', {
     text: 'Settle an animal on a keystone tile — one showing a single animal — and you earn a '
       + 'nature token. Spend it to take any tile with any animal, or to send unwanted animals '
@@ -381,7 +397,11 @@ export function openScoring() {
   }));
 
   wireExamples(body);
-  openModal({ title: 'Scoring', body, wide: true, actions: [{ label: 'Close', primary: true }] });
+  return body;
+}
+
+export function openScoring() {
+  openModal({ title: 'Scoring', body: scoringSheet(), wide: true });
 }
 
 const HELP_TABS = [
@@ -404,48 +424,18 @@ const HELP_TABS = [
           If nowhere will have it, it goes back to the wild.</li>
       </ul>
 
-      <h4>Nature tokens</h4>
+      <h4 class="with-mark">{{nature-lg}}Nature tokens</h4>
       <ul class="spaced">
         <li>Settle an animal on a <b>keystone tile</b> — one showing a single animal — and take a
-          nature token.</li>
+          nature token {{nature}}.</li>
         <li>Spend one to break the pairing and take <b>any tile with any animal</b>, or to send
           unwanted animals back to the bag.</li>
         <li>If all four animals on offer match they clear themselves. If exactly three match, you
           may clear them once a turn for nothing.</li>
       </ul>`,
   },
-  {
-    id: 'score',
-    label: 'Scoring',
-    html: `
-      <p class="lead">Nothing scores until the end, so every tile is a bet on how the season
-      finishes.</p>
-      <h4>The animals</h4>
-      <p class="muted">Hover any of these to see the shape you are trying to build.</p>
-      <ul class="spaced examples">
-        <li data-example="animal:bighorn"><b>Bighorn sheep</b> want to be in twos — a pair, never a crowd.</li>
-        <li data-example="animal:elk"><b>Elk</b> want a straight line, and the longer the better.</li>
-        <li data-example="animal:trout"><b>Rainbow trout</b> want a run that never branches.</li>
-        <li data-example="animal:eagle"><b>Golden eagles</b> want a ridge to themselves.</li>
-        <li data-example="animal:coyote"><b>Coyotes</b> want variety — one point for each different animal beside them.</li>
-      </ul>
-      <h4>The land</h4>
-      <ul class="spaced">
-        <li>One point per tile in your longest run of each habitat, and a bonus to whoever has the
-          longest run of each.</li>
-        <li>Two tiles only join a corridor where <b>both touching edges</b> show that habitat, so
-          which way round you lay a split tile matters.</li>
-        <li>Every nature token still in hand is worth a point.</li>
-      </ul>
-      <div class="hab-strip">
-        <span data-example="habitat:peak">Alpine Peak</span>
-        <span data-example="habitat:aspen">Aspen Grove</span>
-        <span data-example="habitat:prairie">Shortgrass Prairie</span>
-        <span data-example="habitat:marsh">Beaver Marsh</span>
-        <span data-example="habitat:river">Canyon River</span>
-      </div>
-      <p class="muted">The Scoring button in the corner has the exact tables at any time.</p>`,
-  },
+  { id: 'score', label: 'Scoring', build: () => scoringSheet() },
+
   {
     id: 'controls',
     label: 'Controls',
@@ -468,25 +458,43 @@ const HELP_TABS = [
   },
 ];
 
+const HELP_TAB_KEY = 'colorado.helpTab';
+function lastHelpTab() {
+  try {
+    const id = localStorage.getItem(HELP_TAB_KEY);
+    if (HELP_TABS.some((t) => t.id === id)) return id;
+  } catch (err) { /* private mode */ }
+  return HELP_TABS[0].id;
+}
+
 export function openHelp() {
   const body = el('div', { class: 'help' });
   const bar = el('div', { class: 'help-tabs' });
   const pane = el('div', { class: 'help-pane' });
-  HELP_TABS.forEach((tab, i) => {
-    const btn = el('button', {
-      class: 'help-tab' + (i === 0 ? ' active' : ''),
-      text: tab.label,
-      onclick: () => {
-        bar.querySelectorAll('.help-tab').forEach((b) => b.classList.toggle('active', b === btn));
-        pane.innerHTML = tab.html;
-        wireExamples(pane);
-      },
-    });
+
+  const showTab = (tab, btn) => {
+    bar.querySelectorAll('.help-tab').forEach((b) => b.classList.toggle('active', b === btn));
+    clear(pane);
+    if (tab.build) pane.appendChild(tab.build());
+    else pane.innerHTML = tab.html
+      .replace(/\{\{nature-lg\}\}/g, '<img class="nature-mark lg" src="' + natureGlyph(40) + '" alt="">')
+      .replace(/\{\{nature\}\}/g, '<img class="nature-mark" src="' + natureGlyph(30) + '" alt="nature token">');
+    wireExamples(pane);
+    pane.scrollTop = 0;
+    // Reopening the sheet should land where you left it -- people come back to
+    // the scoring tab far more often than to the introduction.
+    try { localStorage.setItem(HELP_TAB_KEY, tab.id); } catch (err) { /* private mode */ }
+  };
+
+  const want = lastHelpTab();
+  let opening = null;
+  for (const tab of HELP_TABS) {
+    const btn = el('button', { class: 'help-tab', text: tab.label, onclick: () => showTab(tab, btn) });
     bar.appendChild(btn);
-  });
-  pane.innerHTML = HELP_TABS[0].html;
-  wireExamples(pane);
+    if (tab.id === want) opening = { tab, btn };
+  }
   body.appendChild(bar);
   body.appendChild(pane);
-  openModal({ title: 'How to Play', body, wide: true, actions: [{ label: 'Close', primary: true }] });
+  showTab(opening.tab, opening.btn);
+  openModal({ title: 'How to Play', body, wide: true });
 }

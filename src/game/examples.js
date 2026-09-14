@@ -84,36 +84,107 @@ export const ANIMAL_EXAMPLES = {
 
 // Pair each habitat with one that does not look like it, or the split is
 // invisible and the diagram teaches nothing.
-const PARTNER = { peak: 'aspen', aspen: 'river', prairie: 'peak', marsh: 'prairie', river: 'aspen' };
+const PARTNER = { peak: 'aspen', aspen: 'river', prairie: 'peak', marsh: 'prairie', river: 'marsh' };
 
 /**
- * A corridor built out of split tiles.
+ * A different lesson about corridors for each habitat, so that hovering all
+ * five teaches five things rather than the same thing in five colours.
  *
- * A habitat half covers three consecutive edges, so a corridor can never run
- * straight through a split tile along one axis -- it has to turn. That is the
- * whole lesson, and it is far easier to see than to read. The numbers walk you
- * along the run; the last tile shows the habitat but is met by the wrong half.
+ * `expect` is the sorted run lengths the rules should find, and the tests hold
+ * each diagram to it.
  */
 export function habitatExampleData(habitat) {
   const other = PARTNER[habitat] || HABITATS.find((h) => h !== habitat);
   // A split tile is painted with its first habitat on edges 0-2 and its second
   // on 3-5, then turned; rot carries that turn so a diagram can draw the halves
   // where the edges actually are.
-  const split = (rot) => ({
+  const split = (q, r, rot, extra = {}) => ({
+    q,
+    r,
     habitats: [habitat, other],
     rot,
     edges: rotateEdges([habitat, habitat, habitat, other, other, other], rot),
+    ...extra,
   });
-  return {
-    habitat,
-    cells: [
-      { q: 0, r: 0, ...split(5), joins: [5], mark: '1' },
-      { q: 0, r: 1, ...split(1), joins: [2, 1], mark: '2' },
-      { q: 1, r: 0, ...split(3), joins: [4, 5], mark: '3' },
-      { q: 1, r: 1, ...split(2), joins: [2], mark: '4' },
-      { q: 1, r: 2, ...split(2), mark: '✗' },
-    ],
-  };
+  const whole = (q, r, extra = {}) => ({ q, r, habitat, ...extra });
+  const gap = (q, r) => ({ q, r, habitat: other, dimTile: true });
+
+  switch (habitat) {
+    // A half covers three edges in a row, so a run through split tiles has to
+    // bend. This is the shape that surprises people.
+    case 'peak':
+      return {
+        habitat,
+        expect: { peak: [4, 1] },
+        caption: 'A half covers three edges in a row, so a run of split tiles has to bend.',
+        cells: [
+          split(0, 0, 5, { joins: [5], mark: '1' }),
+          split(0, 1, 1, { joins: [2, 1], mark: '2' }),
+          split(1, 0, 3, { joins: [4, 5], mark: '3' }),
+          split(1, 1, 2, { joins: [2], mark: '4' }),
+          split(1, 2, 2, { mark: '✗' }),
+        ],
+      };
+
+    // Whole tiles show one habitat on all six edges, so they can run straight.
+    case 'aspen':
+      return {
+        habitat,
+        expect: { aspen: [4, 1] },
+        caption: 'A whole tile shows the same habitat all round, so a run of them can go straight.',
+        cells: [
+          whole(0, 0, { joins: [5], mark: '1' }),
+          whole(0, 1, { joins: [2, 5], mark: '2' }),
+          whole(0, 2, { joins: [2, 5], mark: '3' }),
+          whole(0, 3, { joins: [2], mark: '4' }),
+          split(0, 4, 3, { mark: '✗' }),
+        ],
+      };
+
+    // Unlike a trout run, a corridor is happy to fork.
+    case 'prairie':
+      return {
+        habitat,
+        expect: { prairie: [4] },
+        caption: 'A corridor may branch. Every tile joined to it counts, fork or no fork.',
+        cells: [
+          whole(0, 0, { joins: [5], mark: '1' }),
+          whole(0, 1, { joins: [2, 5, 1], mark: '2' }),
+          whole(0, 2, { joins: [2], mark: '3' }),
+          whole(1, 0, { joins: [4], mark: '4' }),
+        ],
+      };
+
+    // Only the longest run of a habitat is worth anything.
+    case 'marsh':
+      return {
+        habitat,
+        expect: { marsh: [3, 2] },
+        caption: 'Only your longest run of a habitat scores. The pair on its own is wasted.',
+        cells: [
+          whole(0, 0, { joins: [5], mark: '1' }),
+          whole(0, 1, { joins: [2, 5], mark: '2' }),
+          whole(0, 2, { joins: [2], mark: '3' }),
+          gap(1, 0),
+          gap(1, 1),
+          whole(2, 0, { joins: [5], mark: '✗' }),
+          whole(2, 1, { joins: [2], mark: '✗' }),
+        ],
+      };
+
+    // One tile, two corridors: a split tile is working both halves at once.
+    default:
+      return {
+        habitat,
+        expect: { river: [2, 1], [PARTNER.river]: [2, 1] },
+        caption: 'A split tile is in two corridors at once — one for each of its halves.',
+        cells: [
+          split(0, 0, 0, { joins: [0], joinsB: [4], mark: '✓' }),
+          split(1, 0, 3, { joins: [3] }),
+          split(-1, 1, 2, { joinsB: [1] }),
+        ],
+      };
+  }
 }
 
 /** Turn a set of example cells into an environment the rules can be run on. */

@@ -588,8 +588,10 @@ function onView(view) {
 
   app.board.sync(view);
 
-  // The strip shows the four on offer, or what you are holding.
-  if (view.turnPhase !== 'draft' && myTurn() && view.pending) {
+  // The strip shows the four on offer, or the pair somebody is holding --
+  // theirs as well as yours. Watching a ranger think is more interesting when
+  // you can see the tile they are turning over.
+  if (view.turnPhase !== 'draft' && view.pending) {
     app.draft.setContent('hand', [{ tile: view.pending.tile, token: view.pending.token }]);
   } else {
     app.draft.setContent('display', view.display);
