@@ -167,6 +167,7 @@ export class Hud {
     // holding, so say whose it is rather than leaving it to be guessed at.
     const watching = !mine && v.turnPhase !== 'draft' && v.pending && cur;
     show(bar, mine || !!watching);
+    show($('#action-or'), false);
     if (!mine) {
       if (watching) {
         clear($('#action-buttons'));
@@ -241,6 +242,8 @@ export class Hud {
       const a = v.pending && v.pending.token;
       prompt.innerHTML = 'Settle the <strong>' + escapeHtml(a ? ANIMAL_INFO[a].name : 'animal')
         + '</strong> on a tile showing its mark.';
+      // The two are alternatives, not a prompt with an afterthought under it.
+      show($('#action-or'), true);
       buttons.appendChild(el('button', {
         class: 'ghost-btn', text: 'Send back to the wild',
         'data-tip': 'Send this animal back into the wild without placing it.',

@@ -315,6 +315,17 @@ kbd {
 .prompt strong { color: var(--gold-1); }
 .action-buttons { display: flex; gap: 9px; flex-wrap: wrap; justify-content: center; }
 
+/* Marks the two halves of the token beat as a choice between them. */
+.action-or {
+  display: flex; align-items: center; gap: 9px;
+  font-size: 0.66rem; letter-spacing: 0.26em; text-transform: uppercase;
+  color: var(--ink-dim); text-shadow: 0 1px 3px rgba(8, 14, 11, 0.8);
+}
+.action-or::before, .action-or::after {
+  content: ''; width: 26px; height: 1px;
+  background: linear-gradient(90deg, transparent, var(--edge), transparent);
+}
+
 /* The two optional moves of the draft. They are offers, not instructions, so
    they read as raised wooden tokens rather than as another grey button. */
 .act-btn {
