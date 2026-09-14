@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Colorado</title>
+<meta name="description" content="A 3D peer-to-peer tile-laying game in the Rockies. Build habitat corridors, settle the wildlife that belongs in them, and score the high country." />
+<meta name="theme-color" content="#1d2a26" />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%231d2a26'/%3E%3Cpath d='M6 46h52' stroke='%23e8c65a' stroke-width='4' stroke-linecap='round'/%3E%3Cpath d='M8 44 24 18l10 15 6-8 14 19z' fill='%235c7189'/%3E%3Cpath d='M24 18l6 9h-12zM40 25l4 5h-8z' fill='%23f4f8fc'/%3E%3C/svg%3E" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Alfa+Slab+One&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="styles/main.css" />
+<script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.5/dist/peerjs.min.js"></script>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js"
+  }
+}
+</script>
+</head>
+<body>
+
+<canvas id="gl"></canvas>
+<div id="vignette" aria-hidden="true"></div>
+
+<!-- ===================== In-game HUD ===================== -->
+<div id="hud" class="hidden">
+
+  <div id="turn-panel" class="panel">
+    <div class="panel-head">
+      <div>
+        <div class="round-line"><span id="round-label">Turn 1 of 20</span></div>
+        <div class="turn-line" id="turn-line">Waiting…</div>
+      </div>
+      <div id="nature-badge" class="nature" data-tip-title="Your nature tokens"
+           data-tip="Spend one to take any tile with any animal, or to clear tokens you do not want. Each one left at the end is worth a point.">0</div>
+    </div>
+    <div id="timer-wrap" class="timer-wrap hidden"><div id="timer-bar"></div></div>
+    <ul id="player-list"></ul>
+    <div class="panel-foot">
+      <span id="deck-count" data-tip-title="Tiles left in the stack"
+            data-tip="When everyone has taken their last turn the season ends and the scoring begins.">Stack 0</span>
+      <button id="btn-rules" class="text-btn">Scoring</button>
+    </div>
+  </div>
+
+  <div id="top-right" class="toolbar">
+    <button id="btn-help" class="icon-btn" data-tip="How to play (H)">?</button>
+    <button id="btn-settings" class="icon-btn" data-tip="Settings (Esc)">⚙</button>
+    <button id="btn-camera" class="icon-btn" data-tip="Back to your board (R)">⌖</button>
+    <button id="btn-leave" class="icon-btn danger" data-tip="Leave the game">⏻</button>
+  </div>
+
+  <div id="action-bar" class="action-bar hidden">
+    <div id="action-prompt" class="prompt"></div>
+    <div class="action-buttons" id="action-buttons"></div>
+  </div>
+
+  <div id="log-panel" class="panel">
+    <div class="tabs">
+      <button class="tab active" data-tab="log">Field notes</button>
+      <button class="tab" data-tab="chat">Talk</button>
+      <button id="log-collapse" class="collapse" data-tip="Collapse">▾</button>
+    </div>
+    <div id="log-list" class="scroller"></div>
+    <div id="chat-list" class="scroller hidden"></div>
+    <form id="chat-form" class="chat-form hidden">
+      <input id="chat-input" maxlength="200" placeholder="Say something…" autocomplete="off" />
+      <button type="submit">↵</button>
+    </form>
+  </div>
+
+  <div id="toasts"></div>
+  <div id="banner" class="banner hidden"></div>
+</div>
+
+<!-- ===================== Screens ===================== -->
+<div id="screens">
+
+  <section id="screen-title" class="screen active">
+    <div class="title-wrap">
+      <div class="crest" aria-hidden="true">
+        <svg viewBox="-6 -6 212 132" width="206" height="128">
+          <defs>
+            <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0" stop-color="#8fc0e0"/><stop offset="1" stop-color="#e8c65a"/>
+            </linearGradient>
+          </defs>
+          <circle cx="100" cy="46" r="34" fill="url(#sky)" opacity="0.45"/>
+          <path d="M4 104 54 26l30 44 20-26 46 60z" fill="#5c7189"/>
+          <path d="M54 26l16 24H38zM104 44l12 16h-24z" fill="#f4f8fc"/>
+          <path d="M0 104h200" stroke="#e8c65a" stroke-width="7" stroke-linecap="round"/>
+          <path d="M150 104V78M158 104V84M142 104V86" stroke="#2f5136" stroke-width="5" stroke-linecap="round"/>
+        </svg>
+      </div>
+      <h1>Colorado</h1>
+      <p class="tagline">Lay the land. Call the wildlife home. Keep the corridors long.</p>
+
+      <label class="field name-field">
+        <span>Your name</span>
+        <input id="name-input" maxlength="16" placeholder="Ranger" autocomplete="off" />
+      </label>
+
+      <div class="menu-buttons">
+        <button id="btn-host" class="big-btn primary">Start a Game</button>
+        <div class="join-row">
+          <input id="code-input" maxlength="6" placeholder="CODE" autocomplete="off" spellcheck="false" />
+          <button id="btn-join" class="big-btn">Join</button>
+        </div>
+        <div class="minor-row">
+          <button id="btn-title-settings" class="text-btn">Settings</button>
+          <button id="btn-title-help" class="text-btn">How to Play</button>
+        </div>
+      </div>
+      <div id="title-status" class="status"></div>
+    </div>
+  </section>
+
+  <section id="screen-lobby" class="screen">
+    <div class="lobby-wrap">
+      <header class="lobby-head">
+        <div>
+          <h2>Trailhead</h2>
+          <p class="sub">Share the code, or fill the party with rangers of your own.</p>
+        </div>
+        <div class="code-box">
+          <span class="code-label">Game code</span>
+          <div class="code-row">
+            <strong id="room-code">····</strong>
+            <button id="btn-copy-code" class="text-btn">Copy link</button>
+          </div>
+        </div>
+      </header>
+
+      <div class="lobby-body">
+        <div class="panel lobby-players">
+          <h3>Party <span id="lobby-count" class="muted">(0)</span></h3>
+          <ul id="lobby-list"></ul>
+          <div id="lobby-add-bot" class="add-bot"></div>
+        </div>
+
+        <div class="panel lobby-settings">
+          <h3>Rules of the Season</h3>
+          <div id="lobby-options" class="options"></div>
+          <p id="lobby-host-note" class="muted hidden">Only the host may change these.</p>
+        </div>
+
+        <div class="panel lobby-chat">
+          <h3>Talk</h3>
+          <div id="lobby-chat-list" class="scroller"></div>
+          <form id="lobby-chat-form" class="chat-form">
+            <input id="lobby-chat-input" maxlength="200" placeholder="Say something…" autocomplete="off" />
+            <button type="submit">↵</button>
+          </form>
+        </div>
+      </div>
+
+      <footer class="lobby-foot">
+        <button id="btn-lobby-leave" class="ghost-btn">Leave</button>
+        <div id="lobby-status" class="status"></div>
+        <button id="btn-start" class="big-btn primary">Set Out</button>
+      </footer>
+    </div>
+  </section>
+</div>
+
+<!-- ===================== Modals ===================== -->
+<div id="tooltip" class="tooltip hidden" role="tooltip"></div>
+
+<div id="modal-root" class="modal-root hidden">
+  <div class="modal-backdrop"></div>
+  <div class="modal" role="dialog" aria-modal="true">
+    <button class="modal-close" id="modal-close" aria-label="Close">×</button>
+    <h2 id="modal-title"></h2>
+    <div id="modal-body"></div>
+    <div id="modal-actions" class="modal-actions"></div>
+  </div>
+</div>
+
+<div id="loading" class="loading">
+  <div class="loading-inner">
+    <div class="peak-spinner"></div>
+    <p>Walking in…</p>
+  </div>
+</div>
+
+<script type="module" src="src/main.js"></script>
+</body>
+</html>

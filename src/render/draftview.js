@@ -1,0 +1,216 @@
+// The four tile-and-token pairs on offer, drawn as an orthographic overlay
+// across the bottom of the screen. Once a pair is drafted the same strip shows
+// what you are holding.
+
+import * as THREE from 'three';
+import { makeTileTexture, makeTokenTexture, makeNatureTokenTexture } from './tileart.js';
+
+const tileCache = new Map();
+function tileTex(tile) {
+  const key = tile.habitats.join('/') + '|' + tile.wildlife.join('/');
+  if (tileCache.has(key)) return tileCache.get(key);
+  const t = new THREE.CanvasTexture(makeTileTexture(tile));
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.anisotropy = 8;
+  tileCache.set(key, t);
+  return t;
+}
+
+const tokenCache = new Map();
+function tokenTex(animal) {
+  if (tokenCache.has(animal)) return tokenCache.get(animal);
+  const t = new THREE.CanvasTexture(
+    animal === 'nature' ? makeNatureTokenTexture() : makeTokenTexture(animal),
+  );
+  t.colorSpace = THREE.SRGBColorSpace;
+  tokenCache.set(animal, t);
+  return t;
+}
+
+function plane(tex, tint) {
+  return new THREE.Mesh(
+    new THREE.PlaneGeometry(1, 1),
+    new THREE.MeshBasicMaterial({
+      map: tex, transparent: true, alphaTest: 0.02, depthWrite: false,
+      toneMapped: false, color: tint || 0xffffff,
+    }),
+  );
+}
+
+export class DraftView {
+  constructor() {
+    this.scene = new THREE.Scene();
+    this.camera = new THREE.OrthographicCamera(-1, 1, 1, -1, -1000, 1000);
+    this.camera.position.z = 400;
+    this.root = new THREE.Group();
+    this.scene.add(this.root);
+
+    this.width = 1;
+    this.height = 1;
+    this.slots = [];            // { group, tileMesh, tokenMesh, slot, cur, target }
+    this.mode = 'display';
+    this.hover = null;          // { slot, part }
+    this.selected = { tile: null, token: null };
+    this.culling = new Set();
+    this.enabled = true;
+    this.time = 0;
+    this.raycaster = new THREE.Raycaster();
+    this.pointer = new THREE.Vector2(-10, -10);
+    this.signature = '';
+  }
+
+  resize(w, h) {
+    this.width = w;
+    this.height = h;
+    this.camera.left = -w / 2;
+    this.camera.right = w / 2;
+    this.camera.top = h / 2;
+    this.camera.bottom = -h / 2;
+    this.camera.updateProjectionMatrix();
+    this.layout();
+  }
+
+  get metrics() {
+    const big = this.mode === 'hand';
+    const tile = Math.max(68, Math.min(this.width * (big ? 0.12 : 0.105), this.height * 0.2, big ? 168 : 140));
+    return { tile, token: tile * 0.44, gap: tile * 0.12 };
+  }
+
+  /** Pixels the strip occupies, so the HUD can keep clear of it. */
+  get stripHeight() {
+    const m = this.metrics;
+    return m.tile + m.token + m.gap + 54;
+  }
+
+  /**
+   * @param mode   'display' for the four on offer, 'hand' for what you hold
+   * @param slots  [{ tile, token }]
+   */
+  setContent(mode, slots) {
+    const sig = mode + '|' + slots.map((s) => (s.tile
+      ? s.tile.habitats.join('') + s.tile.wildlife.join('')
+      : '-') + ':' + (s.token || '-')).join('|');
+    if (sig === this.signature) return;
+    this.signature = sig;
+    this.mode = mode;
+
+    for (const s of this.slots) {
+      this.root.remove(s.group);
+      s.group.traverse((o) => {
+        if (o.geometry) o.geometry.dispose();
+        if (o.material) o.material.dispose();
+      });
+    }
+    this.slots = [];
+
+    slots.forEach((slot, i) => {
+      const group = new THREE.Group();
+      let tileMesh = null;
+      let tokenMesh = null;
+      if (slot.tile) {
+        tileMesh = plane(tileTex(slot.tile));
+        tileMesh.userData = { slot: i, part: 'tile' };
+        group.add(tileMesh);
+      }
+      if (slot.token) {
+        tokenMesh = plane(tokenTex(slot.token));
+        tokenMesh.userData = { slot: i, part: 'token' };
+        group.add(tokenMesh);
+      }
+      this.root.add(group);
+      this.slots.push({
+        group, tileMesh, tokenMesh, slot: i,
+        cur: { x: 0, y: -this.height, lift: 0, scale: 1 },
+      });
+    });
+    this.layout();
+  }
+
+  layout() {
+    const m = this.metrics;
+    const n = Math.max(1, this.slots.length);
+    const spacing = Math.min(m.tile * 1.28, (this.width * 0.86) / n);
+    const total = spacing * (n - 1);
+    const baseY = -this.height / 2 + m.token + m.gap + m.tile * 0.5 + 26;
+    this.slots.forEach((s, i) => {
+      s.baseX = -total / 2 + i * spacing;
+      s.baseY = baseY;
+      s.m = m;
+    });
+  }
+
+  setHover(hit) {
+    this.hover = hit;
+  }
+
+  setSelection(sel) {
+    this.selected = sel || { tile: null, token: null };
+  }
+
+  setCulling(set) {
+    this.culling = set || new Set();
+  }
+
+  hitTest(clientX, clientY, rect) {
+    if (!this.enabled || !this.slots.length) return null;
+    this.pointer.set(
+      ((clientX - rect.left) / rect.width) * 2 - 1,
+      -((clientY - rect.top) / rect.height) * 2 + 1,
+    );
+    this.raycaster.setFromCamera(this.pointer, this.camera);
+    const meshes = [];
+    for (const s of this.slots) {
+      if (s.tileMesh) meshes.push(s.tileMesh);
+      if (s.tokenMesh) meshes.push(s.tokenMesh);
+    }
+    const hits = this.raycaster.intersectObjects(meshes, false);
+    if (!hits.length) return null;
+    // Tokens sit in front of tiles, so prefer whichever is nearer the camera.
+    let best = null;
+    for (const h of hits) {
+      const z = h.object.position.z + h.object.parent.position.z;
+      if (!best || z > best.z) best = { z, data: h.object.userData };
+    }
+    return best ? { ...best.data } : null;
+  }
+
+  update(dt) {
+    this.time += dt;
+    const lerp = 1 - Math.pow(1e-8, dt);
+    for (const s of this.slots) {
+      const m = s.m || this.metrics;
+      const hovered = this.hover && this.hover.slot === s.slot;
+      const chosenTile = this.selected.tile === s.slot;
+      const chosenToken = this.selected.token === s.slot;
+      const culling = this.culling.has(s.slot);
+      const lift = chosenTile || chosenToken || culling ? 26 : hovered ? 16 : 0;
+      const scale = chosenTile || chosenToken ? 1.1 : hovered ? 1.06 : 1;
+
+      s.cur.x += (s.baseX - s.cur.x) * lerp;
+      s.cur.y += (s.baseY + lift - s.cur.y) * lerp;
+      s.cur.scale += (scale - s.cur.scale) * lerp;
+      s.group.position.set(s.cur.x, s.cur.y, hovered ? 20 : 0);
+
+      const tileSize = m.tile * s.cur.scale;
+      if (s.tileMesh) {
+        s.tileMesh.scale.set(tileSize, tileSize, 1);
+        s.tileMesh.position.set(0, 0, 1);
+        s.tileMesh.material.color.setHex(chosenTile ? 0xfff2d2 : 0xffffff);
+        s.tileMesh.material.opacity = this.selected.tile !== null && !chosenTile ? 0.62 : 1;
+      }
+      if (s.tokenMesh) {
+        const ts = m.token * s.cur.scale;
+        s.tokenMesh.scale.set(ts, ts, 1);
+        s.tokenMesh.position.set(0, -(tileSize * 0.5 + m.gap + ts * 0.5) + tileSize * 0.02, 2);
+        s.tokenMesh.material.color.setHex(
+          culling ? 0xff9a8a : chosenToken ? 0xe6ffd8 : 0xffffff,
+        );
+        s.tokenMesh.material.opacity = this.selected.token !== null && !chosenToken ? 0.62 : 1;
+      }
+    }
+  }
+
+  clear() {
+    this.setContent('display', []);
+  }
+}
