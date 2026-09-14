@@ -7,13 +7,18 @@ import { RULE_TEXT, RULE_TABLE, HABITAT_BONUS } from '../game/scoring.js';
 import { animalGlyph, habitatSwatch, natureGlyph, returnGlyph } from '../render/tileart.js';
 import { animalExample, habitatExample } from '../render/diagrams.js';
 
+/** Within a line or two of the foot, so a reader scrolled up is left alone. */
+function nearBottom(list) {
+  return list.scrollHeight - list.scrollTop - list.clientHeight < 28;
+}
+
 export class Hud {
   constructor(handlers) {
     this.h = handlers;
     this.view = null;
     this.mode = null;         // the current interaction mode from main.js
-    this.lastLogLen = -1;
-    this.lastChatLen = -1;
+    this.lastLogKey = null;
+    this.lastChatKey = null;
     this.activeTab = 'log';
     this.watching = null;
     this.bind();
@@ -257,22 +262,36 @@ export class Hud {
 
   renderLog() {
     const v = this.view;
-    if (!v.log || v.log.length === this.lastLogLen) return;
-    this.lastLogLen = v.log.length;
-    const list = clear($('#log-list'));
+    if (!v.log) return;
+    // Key on the last entry, not on how many there are: the view carries a
+    // window of the tail, so once the game is long enough the count stops
+    // changing while the contents do not.
+    const last = v.log[v.log.length - 1];
+    const key = v.log.length + ':' + (last ? last.n || last.t : 0);
+    if (key === this.lastLogKey) return;
+    this.lastLogKey = key;
+
+    const list = $('#log-list');
+    const atEnd = nearBottom(list);
+    clear(list);
     for (const entry of v.log) {
       list.appendChild(el('div', { class: 'log-line ' + (entry.kind || ''), text: entry.text }));
     }
-    list.scrollTop = list.scrollHeight;
+    if (atEnd) list.scrollTop = list.scrollHeight;
   }
 
   renderChat() {
     const chat = this.view.chat || [];
-    if (chat.length === this.lastChatLen) return;
-    this.lastChatLen = chat.length;
-    const list = clear($('#chat-list'));
+    const last = chat[chat.length - 1];
+    const key = chat.length + ':' + (last ? last.id : 0);
+    if (key === this.lastChatKey) return;
+    this.lastChatKey = key;
+
+    const list = $('#chat-list');
+    const atEnd = nearBottom(list);
+    clear(list);
     for (const m of chat) list.appendChild(chatLine(m));
-    list.scrollTop = list.scrollHeight;
+    if (atEnd) list.scrollTop = list.scrollHeight;
   }
 
   showResult(v) {

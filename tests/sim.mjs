@@ -388,6 +388,48 @@ console.log('\nhelp-sheet examples');
     String(shapes.size));
 }
 
+// --- the field notes keep moving --------------------------------------------
+// A view carries only the tail of the log, so its length stops changing once
+// the game is long enough. Anything watching the length to decide whether
+// something happened goes deaf at that point, which is what the field notes
+// used to do. Every entry carries a number that keeps climbing.
+console.log('\nfield notes');
+{
+  const rng = makeRng(7);
+  const e = new Engine();
+  e.addPlayer('a', 'A', true, true);
+  e.addPlayer('b', 'B', false, true);
+  e.startGame();
+
+  let pinnedWhileMoving = 0;   // length unchanged but a new entry arrived
+  let wentBack = 0;
+  let advances = 0;
+  let lastLen = -1;
+  let lastSeq = -1;
+  let guard = 0;
+  while (e.state.phase === 'playing' && guard++ < 4000) {
+    const id = e.currentPlayerId();
+    const res = e.handle(id, chooseBotMove(e.viewFor(id), { rng }));
+    if (res && res.error) break;
+    const log = e.viewFor('a').log;
+    const tail = log[log.length - 1];
+    if (tail.n > lastSeq) {
+      advances++;
+      // This is the case the old code could not see: something was written
+      // down and the length of the view's window did not move.
+      if (log.length === lastLen) pinnedWhileMoving++;
+    }
+    if (tail.n < lastSeq) wentBack++;
+    lastLen = log.length;
+    lastSeq = tail.n;
+  }
+  check('entries arrive while the window length stays put', pinnedWhileMoving > 20,
+    String(pinnedWhileMoving));
+  check('every entry is numbered', Number.isInteger(lastSeq) && lastSeq > 40, String(lastSeq));
+  check('and the numbering never goes backwards', wentBack === 0, String(wentBack));
+  check('the log kept being written to throughout', advances > 40, String(advances));
+}
+
 // --- waving an animal on ----------------------------------------------------
 // Cascadia lets you decline a wildlife token even when it would fit, which
 // matters because several rules punish a crowd.

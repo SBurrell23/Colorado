@@ -51,7 +51,7 @@ export class Menu {
   constructor(handlers) {
     this.h = handlers;
     this.view = null;
-    this.lastChatLen = -1;
+    this.lastChatKey = null;
     this.bind();
   }
 
@@ -197,9 +197,13 @@ export class Menu {
 
     this.renderOptions(view, isHost);
 
+    // Keyed on the last message rather than the count: the chat is capped, so
+    // past that cap the count stops changing while the messages do not.
     const chat = view.chat || [];
-    if (chat.length !== this.lastChatLen) {
-      this.lastChatLen = chat.length;
+    const last = chat[chat.length - 1];
+    const key = chat.length + ':' + (last ? last.id : 0);
+    if (key !== this.lastChatKey) {
+      this.lastChatKey = key;
       const cl = clear($('#lobby-chat-list'));
       for (const m of chat) cl.appendChild(chatLine(m));
       cl.scrollTop = cl.scrollHeight;
@@ -251,6 +255,6 @@ export class Menu {
     setScreen('title');
     this.setStatus('');
     this.setBusy(false);
-    this.lastChatLen = -1;
+    this.lastChatKey = null;
   }
 }

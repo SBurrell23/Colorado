@@ -105,8 +105,15 @@ export class Engine {
     return this.state.order.length;
   }
 
+  /**
+   * Every entry carries a number that only ever goes up. Views send a window
+   * of the tail, so the length of what arrives stops changing once the log is
+   * longer than that window -- anything downstream that watches the length to
+   * decide whether something happened would freeze. The number does not.
+   */
   log(text, kind = 'info', extra = {}) {
-    this.state.log.push({ t: Date.now(), text, kind, ...extra });
+    this.logSeq = (this.logSeq || 0) + 1;
+    this.state.log.push({ n: this.logSeq, t: Date.now(), text, kind, ...extra });
     if (this.state.log.length > MAX_LOG) this.state.log.shift();
   }
 
