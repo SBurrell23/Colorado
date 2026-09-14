@@ -73,7 +73,7 @@ export class DraftView {
   get metrics() {
     const big = this.mode === 'hand';
     const tile = Math.max(68, Math.min(this.width * (big ? 0.12 : 0.105), this.height * 0.2, big ? 168 : 140));
-    return { tile, token: tile * 0.44, gap: tile * 0.12 };
+    return { tile, token: tile * 0.55, gap: tile * 0.11 };
   }
 
   /** Pixels the strip occupies, so the HUD can keep clear of it. */
