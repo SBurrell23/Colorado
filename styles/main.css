@@ -426,9 +426,19 @@ input[type="text"], input:not([type]), textarea { cursor: text; }
   #log-panel { width: 250px; max-height: 24vh; }
 }
 @media (max-width: 640px) {
-  #turn-panel { width: calc(100vw - 28px); }
-  #log-panel { width: calc(100vw - 28px); max-height: 18vh; bottom: calc(var(--draft-h, 220px) + 52px); }
-  .action-bar { bottom: calc(var(--draft-h, 220px) + 4px); }
+  /* On a phone the three HUD blocks are stacked rather than overlaid: the
+     toolbar keeps the top corner, the turn panel drops below it, and the log
+     sits above the prompt, which sits above the draft strip. */
+  .toolbar { gap: 6px; }
+  .toolbar .icon-btn { width: 32px; height: 32px; font-size: 0.9rem; }
+  #turn-panel { width: calc(100vw - 28px); top: 54px; font-size: 0.88rem; padding: 11px 12px 9px; gap: 8px; }
+  #toasts { top: 112px; }
+  #log-panel {
+    width: calc(100vw - 28px); max-height: 14vh;
+    bottom: calc(var(--draft-h, 220px) + 132px);
+  }
+  .action-bar { bottom: calc(var(--draft-h, 220px) + 4px); max-width: calc(100vw - 28px); }
+  .prompt { font-size: 0.9rem; padding: 0.4em 0.8em; }
   .code-box { text-align: left; }
   .lobby-head { flex-direction: column; align-items: stretch; }
   .rule-row { grid-template-columns: 40px 1fr; }

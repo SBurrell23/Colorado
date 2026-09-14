@@ -29,6 +29,9 @@ export const DEFAULT_SETTINGS = {
 
 const MAX_LOG = 140;
 
+/** "an elk", "an eagle", "a coyote" -- the log reads aloud, so it should scan. */
+const article = (word) => ('aeiou'.includes(String(word)[0]) ? 'an' : 'a');
+
 export class Engine {
   constructor(settings = {}) {
     this.settings = { ...DEFAULT_SETTINGS, ...settings };
@@ -360,7 +363,7 @@ export class Engine {
 
     const hex = p.env[hexKey(q, r)];
     hex.token = token;
-    this.log(p.name + ' settles ' + (token === 'elk' ? 'an elk' : 'a ' + token) + '.', 'token', { by: p.id });
+    this.log(p.name + ' settles ' + article(token) + ' ' + token + '.', 'token', { by: p.id });
     this.onSfx('token');
 
     if (hex.keystone && s.natureLeft > 0) {

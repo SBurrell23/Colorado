@@ -406,13 +406,27 @@ function send(action) {
  */
 function syncFraming() {
   const h = Math.max(1, window.innerHeight);
-  const strip = app.view && app.view.phase === 'playing' ? app.draft.stripHeight : 0;
-  app.cam.stripFraction = Math.min(0.46, strip / h);
-  if (app.view && app.view.phase === 'playing') {
-    const vFov = (app.cam.camera.fov * Math.PI) / 180;
-    const worldPerPixel = (2 * app.cam.dist * Math.tan(vFov / 2)) / h;
-    app.cam.frameBias = -(strip / 2) * worldPerPixel;
+  if (!app.view || app.view.phase !== 'playing') {
+    app.cam.stripFraction = 0;
+    return;
   }
+  // On a phone the HUD panels go full width and box the view in from above and
+  // below; on a wide screen they sit in the corners and only the draft strip
+  // matters. Either way, work out the band of screen that is actually clear.
+  const wide = (el) => el && el.getBoundingClientRect().width > window.innerWidth * 0.6;
+  let top = 0;
+  let bottom = h - app.draft.stripHeight;
+  const panel = $('#turn-panel');
+  if (wide(panel)) top = panel.getBoundingClientRect().bottom;
+  const log = $('#log-panel');
+  if (wide(log)) bottom = Math.min(bottom, log.getBoundingClientRect().top);
+
+  const band = Math.max(h * 0.28, bottom - top);
+  app.cam.stripFraction = Math.min(0.62, 1 - band / h);
+  const vFov = (app.cam.camera.fov * Math.PI) / 180;
+  const worldPerPixel = (2 * app.cam.dist * Math.tan(vFov / 2)) / h;
+  // Aim at the middle of that band rather than the middle of the screen.
+  app.cam.frameBias = ((top + bottom) / 2 - h / 2) * worldPerPixel;
 }
 
 function focusOn(playerId) {

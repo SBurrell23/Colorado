@@ -28,6 +28,13 @@ export class Hud {
       p.classList.toggle('collapsed');
       $('#log-collapse').textContent = p.classList.contains('collapsed') ? '▸' : '▾';
     });
+    // A phone has no room for the field notes and the board at once, so the
+    // notes start folded away; the toast still announces anything important.
+    if (window.matchMedia('(max-width: 640px)').matches) {
+      $('#log-panel').classList.add('collapsed');
+      $('#log-collapse').textContent = '▸';
+    }
+
     for (const tab of document.querySelectorAll('#log-panel .tab')) {
       tab.addEventListener('click', () => {
         this.activeTab = tab.dataset.tab;

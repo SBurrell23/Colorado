@@ -27,9 +27,11 @@ animal can settle in any habitat; what matters is how you arrange them.
 | Golden eagle | Solitude — only eagles with no eagle beside them count |
 | Coyote | Variety — one point for each different animal on the six hexes around it |
 
-At the end of twenty turns you score your wildlife, then two points for the
-largest corridor of each habitat (plus a three-point bonus if nobody has a
-longer one), then one point per unspent nature token.
+At the end of twenty turns you score your wildlife, then one point for every
+tile in your largest unbroken run of each habitat — two more for having the
+longest run of that habitat at the table, one each if it is tied — and finally
+one point per unspent nature token. Two tiles only join into a corridor where
+both of the edges they press together show that habitat.
 
 ## A turn
 
@@ -48,7 +50,7 @@ free, and again after that for a nature token.
 
 The host's browser runs the game and everyone else connects straight to it over
 WebRTC, using PeerJS only to introduce the two ends. There is no server of ours
-in the middle and no account to make: start a game, hand out the six-letter
+in the middle and no account to make: start a game, hand out the four-character
 code, and anyone who types it in joins.
 
 Empty seats can be filled with rangers — three grades of bot, from one that
