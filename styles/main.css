@@ -157,7 +157,9 @@ kbd {
 }
 .screen.active { display: grid; }
 
-.title-wrap { width: min(560px, 100%); text-align: center; display: grid; gap: 14px; justify-items: center; padding: 16px; }
+/* One width for the name field and the buttons under it, so the whole stack
+   lines up down both edges. */
+.title-wrap { --menu-w: min(340px, 100%); width: min(560px, 100%); text-align: center; display: grid; gap: 14px; justify-items: center; padding: 16px; }
 .crest { filter: drop-shadow(0 8px 24px rgba(0,0,0,0.45)); }
 .title-wrap h1 {
   margin: 0;
@@ -169,18 +171,22 @@ kbd {
   filter: drop-shadow(0 3px 14px rgba(232, 198, 90, 0.3));
 }
 /* The C of the state flag, standing in for the letter it replaces. */
-.title-wrap h1 { display: flex; align-items: baseline; justify-content: center; gap: 0.02em; }
+.title-wrap h1 { display: flex; align-items: baseline; justify-content: center; }
 .flag-c {
   width: 0.86em; height: 0.86em;
   align-self: center; margin-bottom: 0.06em;
+  /* The glyph carries its own margin inside the viewBox, and the C's opening
+     leaves more air on its right; pull the word back over both. */
+  margin-right: -0.1em;
   filter: drop-shadow(0 3px 10px rgba(0, 0, 0, 0.45));
 }
 
 .field { display: grid; gap: 6px; text-align: left; width: min(320px, 100%); }
+.title-wrap .field { width: var(--menu-w); }
 .field > span { font-size: 0.74rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink-dim); }
 .name-field input { text-align: center; font-size: 1.06rem; }
 
-.menu-buttons { display: grid; gap: 11px; justify-items: center; width: min(340px, 100%); margin-top: 4px; }
+.menu-buttons { display: grid; gap: 11px; justify-items: center; width: var(--menu-w, min(340px, 100%)); margin-top: 4px; }
 .menu-buttons > .big-btn { width: 100%; }
 .join-row { display: flex; gap: 8px; width: 100%; }
 .join-row input {
