@@ -269,6 +269,7 @@ kbd {
 }
 .nature-mark { width: 1.05em; height: 1.05em; object-fit: contain; vertical-align: -0.16em; }
 .nature-mark.lg { width: 1.5em; height: 1.5em; vertical-align: -0.3em; }
+.btn-mark { width: 1.18em; height: 1.18em; object-fit: contain; margin-right: 1px; }
 .with-mark { display: flex; align-items: center; gap: 8px; }
 .p-nature .nature-mark { width: 13px; height: 13px; }
 

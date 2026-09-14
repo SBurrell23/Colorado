@@ -12,7 +12,7 @@ export const HABITATS = ['peak', 'aspen', 'prairie', 'marsh', 'river'];
 
 export const HABITAT_INFO = {
   peak:    { name: 'Alpine Peak',   short: 'Peaks',   colour: '#b9c4d2', deep: '#7b8798' },
-  aspen:   { name: 'Aspen Grove',   short: 'Aspen',   colour: '#f2a83c', deep: '#b06420' },
+  aspen:   { name: 'Aspen Grove',   short: 'Aspen',   colour: '#dfa251', deep: '#9c6029' },
   prairie: { name: 'Shortgrass Prairie', short: 'Prairie', colour: '#d9c184', deep: '#a8894a' },
   marsh:   { name: 'Beaver Marsh',  short: 'Marsh',   colour: '#7fa86a', deep: '#4d7042' },
   river:   { name: 'Canyon River',  short: 'River',   colour: '#6fb0cc', deep: '#3d7a99' },

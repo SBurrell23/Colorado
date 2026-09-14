@@ -223,7 +223,11 @@ function updateFpsCounter() {
     });
     document.body.appendChild(fpsNode);
   }
-  fpsNode.textContent = app.fps + ' fps';
+  // Frame rate always; the trip to the host as well when there is one to make.
+  const parts = [app.fps + ' fps'];
+  const s = app.session;
+  if (s && !s.isHost) parts.push(s.ping === null ? '— ms' : s.ping + ' ms');
+  fpsNode.textContent = parts.join('  ·  ');
 }
 
 function onResize() {
@@ -494,6 +498,10 @@ function send(action) {
  * Keep the camera aware of how much of the frame the draft strip covers, so
  * the tableau is centred in the clear area rather than behind the tiles.
  */
+// How the board view sits when you ask for it back: well up and well out.
+const BOARD_VIEW_PITCH = 0.66;
+const BOARD_VIEW_ZOOM = 1.32;
+
 function syncFraming() {
   const h = Math.max(1, window.innerHeight);
   if (!app.view || app.view.phase !== 'playing') {
@@ -534,16 +542,17 @@ function focusOn(playerId, { refit = false } = {}) {
   app.watching = playerId;
   app.hud.setWatching(playerId);
   const centre = app.board.focusOf(playerId, p.env);
-  // Sit back just far enough to hold the whole tableau, plus a ring of meadow.
-  // Growing boards pull the camera out; it never snaps in as tiles are added.
+  // Far enough back to hold the whole tableau with meadow to spare, looking
+  // well down on it: this is the pose you want when you come back to your own
+  // land to think, not a close three-quarter view of one corner of it.
   const half = app.cam.fitDistance(app.board.extentOf(playerId, p.env) + 2.6);
-  const dist = Math.max(13, Math.min(60, half));
+  const dist = Math.max(17, Math.min(64, half * BOARD_VIEW_ZOOM));
   syncFraming();
   app.cam.focusOn(centre);
-  app.cam.setHome(centre, dist, 0.44);
+  app.cam.setHome(centre, dist, BOARD_VIEW_PITCH);
   if (refit) {
     app.cam.goalDist = dist;
-    app.cam.goalPitch = 0.44;
+    app.cam.goalPitch = BOARD_VIEW_PITCH;
     app.cam.goalYaw = -Math.PI * 0.5;
   }
 }

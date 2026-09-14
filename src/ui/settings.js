@@ -3,7 +3,7 @@
 
 import { el, clear, openModal } from './dom.js';
 
-const STORE_KEY = 'colorado.settings.v3';
+const STORE_KEY = 'colorado.settings.v4';
 
 export const DEFAULTS = {
   // sound
@@ -20,7 +20,7 @@ export const DEFAULTS = {
   treeCount: 3200,
   clouds: true,
   fogFar: 420,
-  showFps: false,
+  showFps: true,
 };
 
 export const PRESETS = {
@@ -150,7 +150,8 @@ export function openSettingsModal(onChange) {
     slider('treeCount', 0, 8000, 200, (v) => String(Math.round(v)), apply)));
   body.appendChild(row('Clouds', null, toggle('clouds', apply)));
   body.appendChild(row('View distance', null, slider('fogFar', 200, 700, 20, (v) => Math.round(v) + 'm', apply)));
-  body.appendChild(row('Show FPS counter', null, toggle('showFps', apply)));
+  body.appendChild(row('Performance readout', 'Frame rate, and your ping to the host in a joined game.',
+    toggle('showFps', apply)));
 
   function refreshSwitchLabels() {
     body.querySelectorAll('.switch').forEach((sw) => {
@@ -168,7 +169,7 @@ export function openSettingsModal(onChange) {
     body,
     actions: [
       {
-        label: 'Restore defaults',
+        label: 'Restore Defaults',
         close: false,
         onClick: () => {
           Object.assign(settings, DEFAULTS);

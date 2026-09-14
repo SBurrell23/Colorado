@@ -172,7 +172,9 @@ export class BoardView {
     group.add(plate);
 
     const label = nameSprite(player.name, player.colour);
-    label.position.set(-14.6, 2.6, 0);
+    // The far edge of the mat, so from the board view it sits above the tiles
+    // like a name across the top of a sheet of paper.
+    label.position.set(14.6, 2.6, 0);
     group.add(label);
 
     this.root.add(group);

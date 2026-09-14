@@ -110,7 +110,7 @@ const HABITAT_PAINTERS = {
   aspen(ctx, S) {
     // Deliberately warmer and more orange than the prairie's dry straw: side
     // by side on a board the two were reading as the same habitat.
-    fillBase(ctx, S, '#f2b950', '#b86a22');
+    fillBase(ctx, S, '#e0ae5c', '#a5672c');
     // Slim white trunks with dark eyes, gold canopy above.
     for (let i = 0; i < 11; i++) {
       const x = S * (0.08 + (i * 0.085) % 0.86) + (i % 2) * S * 0.02;
@@ -128,9 +128,9 @@ const HABITAT_PAINTERS = {
     // A canopy of turning leaves: gold through amber to rust. This is the
     // whole point of an aspen grove in autumn, and it is what tells the tile
     // apart from the prairie at a glance.
-    const LEAF = ['#ffe07a', '#ffc24a', '#f59a2e', '#e2711d', '#c44f18'];
+    const LEAF = ['#f0d489', '#e8b662', '#d9924e', '#c0733c', '#a2552c'];
     ctx.save();
-    ctx.globalAlpha = 0.9;
+    ctx.globalAlpha = 0.82;
     for (let i = 0; i < 64; i++) {
       const x = Math.random() * S;
       const y = Math.random() * S * 0.62;
@@ -514,6 +514,46 @@ export function natureGlyph(size = 40) {
   peak(S * 0.66, S * 0.82, S * 0.34, S * 0.64, '#7fa0b8', '#f8fcff');
   natureCache[size] = c.toDataURL();
   return natureCache[size];
+}
+
+const returnCache = {};
+/**
+ * The return arrow off a keyboard: a shaft that drops and turns left into a
+ * solid head. Reads as "put it back" at sixteen pixels, which a thin circular
+ * arrow does not.
+ */
+export function returnGlyph(size = 40) {
+  if (returnCache[size]) return returnCache[size];
+  const c = createCanvas(size, size);
+  const ctx = c.getContext('2d');
+  const S = size;
+  const ink = '#2a1108';
+  const u = (v) => v * S;
+
+  ctx.strokeStyle = ink;
+  ctx.fillStyle = ink;
+  ctx.lineWidth = u(0.135);
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+
+  // Down the right-hand side, then a quarter turn to the left.
+  ctx.beginPath();
+  ctx.moveTo(u(0.82), u(0.18));
+  ctx.lineTo(u(0.82), u(0.50));
+  ctx.quadraticCurveTo(u(0.82), u(0.66), u(0.64), u(0.66));
+  ctx.lineTo(u(0.44), u(0.66));
+  ctx.stroke();
+
+  // A solid head, wide enough to survive being shrunk.
+  ctx.beginPath();
+  ctx.moveTo(u(0.12), u(0.66));
+  ctx.lineTo(u(0.46), u(0.44));
+  ctx.lineTo(u(0.46), u(0.88));
+  ctx.closePath();
+  ctx.fill();
+
+  returnCache[size] = c.toDataURL();
+  return returnCache[size];
 }
 
 const swatchCache = {};

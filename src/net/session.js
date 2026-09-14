@@ -38,6 +38,7 @@ export class HostSession extends Emitter {
     this.peerOf = new Map();     // playerId -> peerId
     this.timer = null;
     this.botSeq = 0;
+    this.ping = 0;      // the host is the host; nothing to wait for
     this.botDeadline = 0;
     this.botKey = '';
 
@@ -118,6 +119,12 @@ export class HostSession extends Emitter {
       this.emit('sfx', 'join');
       this.net.broadcast({ t: 'sfx', name: 'join' });
       this.broadcast();
+      return;
+    }
+
+    // A ping needs no seat: it is answered for anyone still handshaking too.
+    if (msg.t === 'ping') {
+      this.net.send(peerId, { t: 'pong', at: msg.at });
       return;
     }
 
@@ -311,6 +318,8 @@ export class ClientSession extends Emitter {
     this.code = null;
     this.lastView = null;
     this.clientId = clientId();
+    this.ping = null;   // milliseconds there and back, once we know
+    this.pinger = null;
   }
 
   async start(code) {
@@ -324,6 +333,12 @@ export class ClientSession extends Emitter {
           if (msg.view.you) this.localId = msg.view.you.id;
           this.emit('view', msg.view);
           break;
+        case 'pong':
+          // Smoothed, so the readout does not jump about on one slow packet.
+          this.ping = this.ping === null
+            ? Date.now() - msg.at
+            : Math.round(this.ping * 0.6 + (Date.now() - msg.at) * 0.4);
+          break;
         case 'sfx':    this.emit('sfx', msg.name); break;
         case 'reject': this.emit('reject', msg.reason); break;
         case 'denied': this.emit('denied', msg.reason); break;
@@ -333,6 +348,10 @@ export class ClientSession extends Emitter {
     this.net.on('close', () => this.emit('closed'));
     this.net.on('warn', (err) => console.warn('[client]', err));
     this.net.send({ t: 'hello', name: this.name, clientId: this.clientId });
+
+    const ping = () => this.net.send({ t: 'ping', at: Date.now() });
+    ping();
+    this.pinger = setInterval(ping, 3000);
   }
 
   intent(action) { this.net.send({ t: 'intent', action }); }
@@ -343,5 +362,9 @@ export class ClientSession extends Emitter {
   removeBot() { /* host only */ }
   backToLobby() { /* host only */ }
   kick() { /* host only */ }
-  leave() { this.net.destroy(); }
+  leave() {
+    if (this.pinger) clearInterval(this.pinger);
+    this.pinger = null;
+    this.net.destroy();
+  }
 }

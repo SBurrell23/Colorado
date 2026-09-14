@@ -4,7 +4,7 @@
 import { $, el, clear, show, openModal, escapeHtml, hideTip, setTipBody } from './dom.js';
 import { HABITATS, ANIMALS, HABITAT_INFO, ANIMAL_INFO } from '../game/tiles.js';
 import { RULE_TEXT, RULE_TABLE, HABITAT_BONUS } from '../game/scoring.js';
-import { animalGlyph, habitatSwatch, natureGlyph } from '../render/tileart.js';
+import { animalGlyph, habitatSwatch, natureGlyph, returnGlyph } from '../render/tileart.js';
 import { animalExample, habitatExample } from '../render/diagrams.js';
 
 export class Hud {
@@ -197,15 +197,18 @@ export class Hud {
           class: 'ghost-btn', text: 'Cancel', onclick: () => this.h.onCancelMode(),
         }));
       } else {
-        prompt.innerHTML = 'Take a tile and the animal beside it.';
+        prompt.innerHTML = 'Choose a tile and animal.';
         const freeThree = v.settings.cullThree && !v.culledThisTurn && v.matching.length === 3;
         if (freeThree) {
           buttons.appendChild(el('button', {
-            class: 'act-btn act-cull', text: 'Clear the three matching',
+            class: 'act-btn act-cull',
             'data-tip': 'Three of the same animal are on offer. You may send them back to the bag '
               + 'for nothing, once per turn.',
             onclick: () => this.h.onQuickCull(),
-          }));
+          }, [
+            el('img', { class: 'btn-mark', src: returnGlyph(40), alt: '' }),
+            'Clear Three Matching',
+          ]));
         }
         buttons.appendChild(el('button', {
           class: 'act-btn act-nature', disabled: v.you.nature < 1,
@@ -214,7 +217,7 @@ export class Hud {
           onclick: () => this.h.onNatureMode(),
         }, [
           el('img', { class: 'nature-mark', src: natureGlyph(30), alt: '' }),
-          'Use a nature token',
+          'Use a Nature Token',
         ]));
         if (!freeThree) {
           buttons.appendChild(el('button', {
@@ -223,7 +226,7 @@ export class Hud {
             onclick: () => this.h.onCullMode(),
           }, [
             el('img', { class: 'nature-mark', src: natureGlyph(30), alt: '' }),
-            'Clear tokens',
+            'Clear Tokens',
           ]));
         }
       }
@@ -234,7 +237,7 @@ export class Hud {
       prompt.innerHTML = 'Lay the tile on your board — it must touch what you already have.';
       buttons.appendChild(el('button', {
         class: 'ghost-btn', onclick: () => this.h.onRotate(),
-      }, ['Turn it', el('kbd', { text: 'R' })]));
+      }, ['Turn It', el('kbd', { text: 'R' })]));
       return;
     }
 
@@ -245,7 +248,7 @@ export class Hud {
       // The two are alternatives, not a prompt with an afterthought under it.
       show($('#action-or'), true);
       buttons.appendChild(el('button', {
-        class: 'ghost-btn', text: 'Send back to the wild',
+        class: 'ghost-btn', text: 'Send Back to the Wild',
         'data-tip': 'Send this animal back into the wild without placing it.',
         onclick: () => this.h.onSkipToken(),
       }));
@@ -322,8 +325,8 @@ export class Hud {
     const isHost = v.you && v.you.isHost;
     // Putting the tally down to walk the boards is half the fun of the end of
     // a game, so it folds away to a button rather than trapping you.
-    const actions = [{ label: 'Look at the boards' }];
-    if (isHost) actions.push({ label: 'Back to the trailhead', onClick: () => this.h.onBackToLobby() });
+    const actions = [{ label: 'Look at the Boards' }];
+    if (isHost) actions.push({ label: 'Back to the Trailhead', onClick: () => this.h.onBackToLobby() });
     actions.push({ label: 'Leave', onClick: () => this.h.onLeave() });
     actions[isHost ? 1 : 0].primary = true;
 
@@ -414,7 +417,7 @@ export function openScoring() {
 const HELP_TABS = [
   {
     id: 'game',
-    label: 'The game',
+    label: 'The Game',
     html: `
       <p class="lead">You are putting together a corner of Colorado, hex by hex. Every turn you
       take one habitat tile and the animal standing beside it, lay the tile against your land and
