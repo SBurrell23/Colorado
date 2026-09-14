@@ -112,7 +112,10 @@ export class BoardView {
 
     // Hex prism with its corners where the art expects them.
     this.hexGeo = new THREE.CylinderGeometry(HEX_R, HEX_R * 0.97, TILE_H, 6, 1, false, Math.PI / 6);
-    this.tokenGeo = new THREE.CylinderGeometry(HEX_R * 0.32, HEX_R * 0.32, 0.15, 20);
+    // A settled token is never picked up again, so nothing underneath it has to
+    // stay readable: it can be a proper chip rather than a button. This is a
+    // shade over half the width of the tile it sits on.
+    this.tokenGeo = new THREE.CylinderGeometry(HEX_R * 0.506, HEX_R * 0.506, 0.21, 28);
 
     // One invisible sheet for every board; see pick().
     this.pickPlane = new THREE.Mesh(
@@ -235,7 +238,7 @@ export class BoardView {
 
         if (t.token) {
           const token = this.makeTokenMesh(t.token);
-          token.position.y = TILE_H / 2 + 0.09;
+          token.position.y = TILE_H / 2 + 0.115;
           g.add(token);
         }
         board.group.add(g);

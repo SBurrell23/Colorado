@@ -16,7 +16,11 @@ const MUSIC_URL = new URL('../../assets/music/pastoral-serenity.mp3', import.met
 // The track is mastered loud and the game is not about the music, so it is
 // trimmed well down before it ever reaches the player's own volume slider.
 const MUSIC_TRIM = 0.34;
-const MUSIC_FADE = 4;      // seconds, both in and out
+const MUSIC_FADE = 4;      // seconds, fading in at the start and out at the end
+// The track is looped by hand so the tail can fall into the head. Left to its
+// own `loop` the join is a hard cut, which after seven quiet minutes is the
+// most startling thing in the game.
+const MUSIC_XFADE = 3;
 
 const A4 = 440;
 const NOTE = (semitonesFromA4) => A4 * Math.pow(2, semitonesFromA4 / 12);
@@ -347,45 +351,104 @@ export class AudioEngine {
   /** The recorded track, streamed and looped under everything else. */
   startTrack() {
     if (this.track || typeof Audio === 'undefined') return;
+    const first = this.makeDeck();
+    if (!first) return;
+    // Two decks, used turn and turn about: one plays out while the other comes
+    // up underneath it.
+    this.track = { decks: [first, null], active: 0, timer: null, fading: false };
+    this.playDeck(first, MUSIC_FADE);
+    this.track.timer = setInterval(() => this.watchLoop(), 250);
+  }
+
+  makeDeck() {
     const media = new Audio();
     media.src = MUSIC_URL;
-    media.loop = true;
+    media.loop = false;          // the crossfade below does the looping
     media.preload = 'auto';
     media.crossOrigin = 'anonymous';
-
-    const fail = () => {
-      // Leave this.track null so the synthesised pad keeps the bed alive.
-      media.removeEventListener('error', fail);
-      this.track = null;
-    };
-    media.addEventListener('error', fail);
 
     let node;
     try {
       node = this.ctx.createMediaElementSource(media);
     } catch (err) {
-      fail();
-      return;
+      return null;
     }
     const gain = this.ctx.createGain();
     gain.gain.value = 0.0001;
     node.connect(gain);
     gain.connect(this.musicBus);
-    this.track = { media, gain };
 
-    const play = media.play();
+    const deck = { media, gain };
+    // Nothing has played at all: hand back to the synthesised pad.
+    media.addEventListener('error', () => {
+      const tr = this.track;
+      if (tr && tr.decks.every((d) => !d || !d.media.currentTime)) this.stopTrack();
+    });
+    // If the fade was missed -- a throttled background tab, say -- do not fall
+    // silent; come back round straight away.
+    media.addEventListener('ended', () => {
+      const tr = this.track;
+      if (tr && tr.decks[tr.active] === deck) this.playDeck(deck, 0.6);
+    });
+    return deck;
+  }
+
+  playDeck(deck, fade) {
+    try { deck.media.currentTime = 0; } catch (err) { /* not seekable yet */ }
+    const play = deck.media.play();
     if (play && play.catch) play.catch(() => { /* blocked until a gesture */ });
-    // Steal in rather than starting mid-phrase at full level.
-    gain.gain.setTargetAtTime(MUSIC_TRIM, this.ctx.currentTime, MUSIC_FADE / 3);
+    const t = this.ctx.currentTime;
+    const g = deck.gain.gain;
+    g.cancelScheduledValues(t);
+    g.setValueAtTime(Math.max(0.0001, g.value), t);
+    g.linearRampToValueAtTime(MUSIC_TRIM, t + fade);
+  }
+
+  /** Bring the other deck up under the last few seconds of this one. */
+  watchLoop() {
+    const tr = this.track;
+    if (!tr || tr.fading) return;
+    const cur = tr.decks[tr.active];
+    const len = cur && cur.media.duration;
+    if (!len || !Number.isFinite(len)) return;
+    if (len - cur.media.currentTime > MUSIC_XFADE) return;
+
+    const other = 1 - tr.active;
+    if (!tr.decks[other]) tr.decks[other] = this.makeDeck();
+    const next = tr.decks[other];
+    if (!next) return;
+
+    tr.fading = true;
+    const t = this.ctx.currentTime;
+    const g = cur.gain.gain;
+    g.cancelScheduledValues(t);
+    g.setValueAtTime(g.value, t);
+    g.linearRampToValueAtTime(0.0001, t + MUSIC_XFADE);
+    this.playDeck(next, MUSIC_XFADE);
+    tr.active = other;
+    setTimeout(() => {
+      try { cur.media.pause(); } catch (err) { /* gone */ }
+      if (this.track) this.track.fading = false;
+    }, MUSIC_XFADE * 1000 + 250);
+  }
+
+  stopTrack(fade = 0) {
+    const tr = this.track;
+    if (!tr) return;
+    this.track = null;
+    clearInterval(tr.timer);
+    const t = this.ctx.currentTime;
+    for (const deck of tr.decks) {
+      if (!deck) continue;
+      deck.gain.gain.cancelScheduledValues(t);
+      deck.gain.gain.setValueAtTime(deck.gain.gain.value, t);
+      deck.gain.gain.linearRampToValueAtTime(0.0001, t + Math.max(0.05, fade));
+      setTimeout(() => { try { deck.media.pause(); } catch (err) { /* gone */ } }, fade * 1000 + 100);
+    }
   }
 
   stopMusic() {
-    if (this.track) {
-      const { media, gain } = this.track;
-      this.track = null;
-      gain.gain.setTargetAtTime(0.0001, this.ctx.currentTime, MUSIC_FADE / 4);
-      setTimeout(() => { try { media.pause(); } catch (e) { /* gone */ } }, MUSIC_FADE * 1000);
-    }
+    this.stopTrack(MUSIC_FADE / 2);
     if (!this.ambient) return;
     clearInterval(this.ambient.timer);
     try { this.ambient.wind.source.stop(); } catch (e) { /* already stopped */ }
