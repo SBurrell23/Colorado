@@ -6,8 +6,11 @@ import { makeTileTexture, makeTokenTexture, createCanvas } from './tileart.js';
 
 export const HEX_R = 1.65;          // centre to corner
 export const TILE_H = 0.34;
-export const BOARD_GAP_X = 40;
-export const BOARD_GAP_Z = 38;
+// The default view looks along +x, so z runs across the screen and x runs away
+// into the meadow: "across" spaces boards left-to-right, "back" pushes a row
+// further from the camera.
+export const BOARD_GAP_ACROSS = 42;
+export const BOARD_GAP_BACK = 40;
 
 const texCache = new Map();
 function tileTexture(tile) {
@@ -30,17 +33,41 @@ function tokenTexture(animal) {
   return t;
 }
 
-/** Where each player's board sits: a row, wrapping to a second row past three. */
+/**
+ * How many boards sit in each row, back row first. Three players get a
+ * triangle rather than a rank of three -- it suits a game made of hexagons,
+ * and it keeps everyone the same distance from everyone else. Past that it is
+ * rows of at most three, fuller rows at the back.
+ */
+export function boardLayout(count) {
+  const n = Math.max(1, count);
+  if (n <= 2) return [n];
+  if (n === 3) return [1, 2];
+  const rows = Math.ceil(n / 3);
+  const out = [];
+  let left = n;
+  for (let i = 0; i < rows; i++) {
+    const take = Math.ceil(left / (rows - i));
+    out.push(take);
+    left -= take;
+  }
+  return out;
+}
+
+/** Where each player's board sits in the meadow. */
 export function boardOrigin(index, count) {
-  const cols = Math.min(3, Math.max(1, count));
-  const rows = Math.ceil(count / cols);
-  const col = index % cols;
-  const row = Math.floor(index / cols);
-  const inRow = Math.min(cols, count - row * cols);
+  const rows = boardLayout(count);
+  let i = index;
+  let row = 0;
+  while (row < rows.length - 1 && i >= rows[row]) {
+    i -= rows[row];
+    row += 1;
+  }
+  const inRow = rows[row];
   return new THREE.Vector3(
-    (col - (inRow - 1) / 2) * BOARD_GAP_X,
+    ((rows.length - 1) / 2 - row) * BOARD_GAP_BACK,
     0,
-    (row - (rows - 1) / 2) * BOARD_GAP_Z,
+    (i - (inRow - 1) / 2) * BOARD_GAP_ACROSS,
   );
 }
 
@@ -63,7 +90,7 @@ function nameSprite(text, colour) {
   const sprite = new THREE.Sprite(new THREE.SpriteMaterial({
     map: tex, transparent: true, depthTest: false, depthWrite: false, toneMapped: false,
   }));
-  sprite.scale.set(6.4, 1.6, 1);
+  sprite.scale.set(9.2, 2.3, 1);
   return sprite;
 }
 
@@ -122,7 +149,7 @@ export class BoardView {
     group.add(plate);
 
     const label = nameSprite(player.name, player.colour);
-    label.position.set(0, 3.4, -12.6);
+    label.position.set(-14.6, 2.6, 0);
     group.add(label);
 
     // Invisible sheet used to turn a mouse ray into a hex on this board.
@@ -249,8 +276,9 @@ export class BoardView {
           depthWrite: false, depthTest: false, fog: false, toneMapped: false,
         }),
       );
+      // RingGeometry lays its corners on 0/60/...; laying the ring flat maps
+      // those straight onto the tile's corners, so it needs no spin of its own.
       ring.rotation.x = -Math.PI / 2;
-      ring.rotation.z = Math.PI / 6;
       const w = this.hexWorld(playerId, h.q, h.r);
       ring.position.set(w.x, TILE_H / 2 + 0.12, w.z);
       ring.userData.hex = h;

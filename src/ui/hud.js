@@ -1,10 +1,11 @@
 // The in-game overlay: whose turn it is, what you are being asked to do, the
 // field notes, the scoring reference and the final tally.
 
-import { $, el, clear, show, openModal, escapeHtml, hideTip } from './dom.js';
+import { $, el, clear, show, openModal, escapeHtml, hideTip, setTipBody } from './dom.js';
 import { HABITATS, ANIMALS, HABITAT_INFO, ANIMAL_INFO } from '../game/tiles.js';
 import { RULE_TEXT, RULE_TABLE, HABITAT_BONUS } from '../game/scoring.js';
-import { animalGlyph, habitatSwatch } from '../render/tileart.js';
+import { animalGlyph, habitatSwatch, natureGlyph } from '../render/tileart.js';
+import { animalExample, habitatExample } from '../render/diagrams.js';
 
 export class Hud {
   constructor(handlers) {
@@ -23,6 +24,9 @@ export class Hud {
     $('#btn-camera').addEventListener('click', () => this.h.onFocusSelf());
     $('#btn-help').addEventListener('click', () => openHelp());
     $('#btn-rules').addEventListener('click', () => openScoring());
+    $('#btn-tally').addEventListener('click', () => {
+      if (this.view) this.showResult(this.view);
+    });
     $('#log-collapse').addEventListener('click', () => {
       const p = $('#log-panel');
       p.classList.toggle('collapsed');
@@ -73,6 +77,7 @@ export class Hud {
     this.renderLog();
     this.renderChat();
     this.renderPrompt();
+    if (view.phase !== 'gameEnd') show($('#btn-tally'), false);
     if (view.phase === 'gameEnd' && (!prev || prev.phase !== 'gameEnd')) this.showResult(view);
   }
 
@@ -97,7 +102,10 @@ export class Hud {
     }
 
     const nature = $('#nature-badge');
-    nature.textContent = v.you ? v.you.nature : 0;
+    clear(nature).append(
+      el('img', { class: 'nature-mark', src: natureGlyph(30), alt: '' }),
+      el('span', { text: String(v.you ? v.you.nature : 0) }),
+    );
     $('#deck-count').textContent = 'Stack ' + v.deckCount;
   }
 
@@ -136,7 +144,10 @@ export class Hud {
         el('span', { class: 'dot', style: { background: p.colour, color: p.colour } }),
         el('span', { class: 'pname', text: p.name }),
         el('span', { class: 'p-right' }, [
-          el('span', { class: 'p-nature', text: '♣' + p.nature }),
+          el('span', { class: 'p-nature' }, [
+            el('img', { class: 'nature-mark', src: natureGlyph(28), alt: 'nature tokens' }),
+            String(p.nature),
+          ]),
           el('span', { text: tiles + ' tiles' }),
         ]),
       ]);
@@ -176,24 +187,30 @@ export class Hud {
         const freeThree = v.settings.cullThree && !v.culledThisTurn && v.matching.length === 3;
         if (freeThree) {
           buttons.appendChild(el('button', {
-            class: 'big-btn rust', text: 'Clear the three matching',
+            class: 'act-btn act-cull', text: 'Clear the three matching',
             'data-tip': 'Three of the same animal are on offer. You may send them back to the bag '
               + 'for nothing, once per turn.',
             onclick: () => this.h.onQuickCull(),
           }));
         }
         buttons.appendChild(el('button', {
-          class: 'ghost-btn', text: 'Use a nature token', disabled: v.you.nature < 1,
+          class: 'act-btn act-nature', disabled: v.you.nature < 1,
           'data-tip': v.you.nature < 1 ? 'You have none to spend.'
             : 'Take any tile with any animal, instead of the pair on offer.',
           onclick: () => this.h.onNatureMode(),
-        }));
+        }, [
+          el('img', { class: 'nature-mark', src: natureGlyph(30), alt: '' }),
+          'Use a nature token',
+        ]));
         if (!freeThree) {
           buttons.appendChild(el('button', {
-            class: 'ghost-btn', text: 'Clear tokens', disabled: v.you.nature < 1,
+            class: 'act-btn act-cull-cost', disabled: v.you.nature < 1,
             'data-tip': 'Spend a nature token to send any of the four animals back to the bag.',
             onclick: () => this.h.onCullMode(),
-          }));
+          }, [
+            el('img', { class: 'nature-mark', src: natureGlyph(30), alt: '' }),
+            'Clear tokens',
+          ]));
         }
       }
       return;
@@ -253,7 +270,9 @@ export class Hud {
         'data-tip-title': ANIMAL_INFO[a].name, 'data-tip': RULE_TEXT[a],
       }, [el('img', { src: animalGlyph(a, 44), alt: ANIMAL_INFO[a].name })])),
       el('th', { text: 'Habitat' }),
-      el('th', { text: '♣' }),
+      el('th', {
+        'data-tip-title': 'Nature tokens', 'data-tip': 'A point apiece for any left unspent.',
+      }, [el('img', { class: 'nature-mark', src: natureGlyph(30), alt: 'nature' })]),
       el('th', { text: 'Total' }),
     ]);
 
@@ -280,17 +299,18 @@ export class Hud {
     body.appendChild(el('p', { class: 'muted', text: 'Hover a column for the rule behind it.' }));
 
     const isHost = v.you && v.you.isHost;
-    openModal({
-      title: 'The Season’s Tally',
-      body,
-      wide: true,
-      actions: isHost
-        ? [
-            { label: 'Back to the trailhead', primary: true, onClick: () => this.h.onBackToLobby() },
-            { label: 'Leave', onClick: () => this.h.onLeave() },
-          ]
-        : [{ label: 'Leave', onClick: () => this.h.onLeave() }],
-    });
+    // Putting the tally down to walk the boards is half the fun of the end of
+    // a game, so it folds away to a button rather than trapping you.
+    const actions = [{
+      label: 'Look at the boards',
+      onClick: () => show($('#btn-tally'), true),
+    }];
+    if (isHost) actions.push({ label: 'Back to the trailhead', onClick: () => this.h.onBackToLobby() });
+    actions.push({ label: 'Leave', onClick: () => this.h.onLeave() });
+    actions[isHost ? 1 : 0].primary = true;
+
+    openModal({ title: 'The Season’s Tally', body, wide: true, actions });
+    show($('#btn-tally'), false);
   }
 }
 
@@ -302,6 +322,27 @@ export function chatLine(m) {
   ]);
 }
 
+/**
+ * Hang a worked example off anything carrying data-example. Reading a rule
+ * tells you what counts; seeing four elk in a row tells you what to build.
+ */
+function wireExamples(root) {
+  for (const node of root.querySelectorAll('[data-example]')) {
+    const [kind, key] = node.dataset.example.split(':');
+    node.dataset.tipTitle = node.dataset.tipTitle
+      || (kind === 'habitat' ? HABITAT_INFO[key].name : ANIMAL_INFO[key].name);
+    node.dataset.tip = node.dataset.tip
+      || (kind === 'habitat'
+        ? 'Tiles join only where both touching edges show this habitat.'
+        : RULE_TEXT[key]);
+    setTipBody(node, () => {
+      const canvas = kind === 'habitat' ? habitatExample(key) : animalExample(key);
+      canvas.className = 'tip-diagram';
+      return canvas;
+    });
+  }
+}
+
 // ---------------------------------------------------------------------------
 export function openScoring() {
   const body = el('div');
@@ -309,7 +350,7 @@ export function openScoring() {
     class: 'muted',
     text: 'Every animal scores by its own habits. Nothing is counted until the season ends.',
   }));
-  body.appendChild(el('div', { class: 'rule-list' }, ANIMALS.map((a) => el('div', { class: 'rule-row' }, [
+  body.appendChild(el('div', { class: 'rule-list' }, ANIMALS.map((a) => el('div', { class: 'rule-row', 'data-example': 'animal:' + a }, [
     el('img', { src: animalGlyph(a, 96), alt: '' }),
     el('div', {}, [
       el('div', { class: 'rule-name', text: ANIMAL_INFO[a].name }),
@@ -327,7 +368,7 @@ export function openScoring() {
       + 'per tile, and the longest run of each habitat takes a further '
       + HABITAT_BONUS + ' points (one each if it is a tie).',
   }));
-  body.appendChild(el('div', { class: 'rule-table' }, HABITATS.map((h) => el('span', { class: 'rule-chip' }, [
+  body.appendChild(el('div', { class: 'rule-table' }, HABITATS.map((h) => el('span', { class: 'rule-chip', 'data-example': 'habitat:' + h }, [
     el('img', { src: habitatSwatch(h, 36), alt: '', style: { width: '16px', height: '16px', verticalAlign: '-3px', marginRight: '5px' } }),
     HABITAT_INFO[h].name,
   ]))));
@@ -339,6 +380,7 @@ export function openScoring() {
       + 'back to the bag. Any you still hold at the end are worth a point apiece.',
   }));
 
+  wireExamples(body);
   openModal({ title: 'Scoring', body, wide: true, actions: [{ label: 'Close', primary: true }] });
 }
 
@@ -379,12 +421,13 @@ const HELP_TABS = [
       <p class="lead">Nothing scores until the end, so every tile is a bet on how the season
       finishes.</p>
       <h4>The animals</h4>
-      <ul class="spaced">
-        <li><b>Bighorn sheep</b> want to be in twos — a pair, never a crowd.</li>
-        <li><b>Elk</b> want a straight line, and the longer the better.</li>
-        <li><b>Cutthroat trout</b> want a run that never branches.</li>
-        <li><b>Golden eagles</b> want a ridge to themselves.</li>
-        <li><b>Coyotes</b> want variety — one point for each different animal beside them.</li>
+      <p class="muted">Hover any of these to see the shape you are trying to build.</p>
+      <ul class="spaced examples">
+        <li data-example="animal:bighorn"><b>Bighorn sheep</b> want to be in twos — a pair, never a crowd.</li>
+        <li data-example="animal:elk"><b>Elk</b> want a straight line, and the longer the better.</li>
+        <li data-example="animal:trout"><b>Rainbow trout</b> want a run that never branches.</li>
+        <li data-example="animal:eagle"><b>Golden eagles</b> want a ridge to themselves.</li>
+        <li data-example="animal:coyote"><b>Coyotes</b> want variety — one point for each different animal beside them.</li>
       </ul>
       <h4>The land</h4>
       <ul class="spaced">
@@ -394,6 +437,13 @@ const HELP_TABS = [
           which way round you lay a split tile matters.</li>
         <li>Every nature token still in hand is worth a point.</li>
       </ul>
+      <div class="hab-strip">
+        <span data-example="habitat:peak">Alpine Peak</span>
+        <span data-example="habitat:aspen">Aspen Grove</span>
+        <span data-example="habitat:prairie">Shortgrass Prairie</span>
+        <span data-example="habitat:marsh">Beaver Marsh</span>
+        <span data-example="habitat:river">Canyon River</span>
+      </div>
       <p class="muted">The Scoring button in the corner has the exact tables at any time.</p>`,
   },
   {
@@ -429,11 +479,13 @@ export function openHelp() {
       onclick: () => {
         bar.querySelectorAll('.help-tab').forEach((b) => b.classList.toggle('active', b === btn));
         pane.innerHTML = tab.html;
+        wireExamples(pane);
       },
     });
     bar.appendChild(btn);
   });
   pane.innerHTML = HELP_TABS[0].html;
+  wireExamples(pane);
   body.appendChild(bar);
   body.appendChild(pane);
   openModal({ title: 'How to Play', body, wide: true, actions: [{ label: 'Close', primary: true }] });

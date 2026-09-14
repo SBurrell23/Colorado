@@ -458,6 +458,47 @@ export function animalGlyph(animal, size = 72) {
   return glyphCache[k];
 }
 
+const natureCache = {};
+/**
+ * The nature-token mark used throughout the interface: a snow-capped peak.
+ * A club glyph had been standing in for it, which read as a playing card.
+ */
+export function natureGlyph(size = 40) {
+  if (natureCache[size]) return natureCache[size];
+  const c = createCanvas(size, size);
+  const ctx = c.getContext('2d');
+  const S = size;
+  ctx.lineJoin = 'round';
+
+  const peak = (cx, baseY, halfW, h, body, snow) => {
+    ctx.fillStyle = body;
+    ctx.beginPath();
+    ctx.moveTo(cx - halfW, baseY);
+    ctx.lineTo(cx, baseY - h);
+    ctx.lineTo(cx + halfW, baseY);
+    ctx.closePath();
+    ctx.fill();
+    ctx.save();
+    ctx.clip();
+    ctx.fillStyle = snow;
+    ctx.beginPath();
+    ctx.moveTo(cx - halfW * 0.42, baseY - h * 0.56);
+    ctx.lineTo(cx, baseY - h);
+    ctx.lineTo(cx + halfW * 0.42, baseY - h * 0.56);
+    ctx.lineTo(cx + halfW * 0.16, baseY - h * 0.68);
+    ctx.lineTo(cx - halfW * 0.02, baseY - h * 0.54);
+    ctx.lineTo(cx - halfW * 0.2, baseY - h * 0.66);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+  };
+
+  peak(S * 0.34, S * 0.82, S * 0.3, S * 0.5, '#5f7f96', '#eef6fb');
+  peak(S * 0.66, S * 0.82, S * 0.34, S * 0.64, '#7fa0b8', '#f8fcff');
+  natureCache[size] = c.toDataURL();
+  return natureCache[size];
+}
+
 const swatchCache = {};
 export function habitatSwatch(habitat, size = 48) {
   const k = habitat + ':' + size;

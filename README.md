@@ -23,7 +23,7 @@ animal can settle in any habitat; what matters is how you arrange them.
 | --- | --- |
 | Bighorn sheep | Pairs of exactly two — a lone ram or a crowd of three scores nothing |
 | Elk | Straight lines, up to four long; longer lines pay far more |
-| Cutthroat trout | Connected runs, but a run with a fork in it scores nothing |
+| Rainbow trout | Connected runs, but a run with a fork in it scores nothing |
 | Golden eagle | Solitude — only eagles with no eagle beside them count |
 | Coyote | Variety — one point for each different animal on the six hexes around it |
 
@@ -94,19 +94,24 @@ src/
   render/
     tileart.js   habitats, animals and tokens, drawn with Canvas 2D
     animals.js   the five wildlife silhouettes
-    scene.js     meadow, instanced forest, painted range, sky and clouds
+    diagrams.js  the worked examples behind the How to Play tooltips
+    scene.js     meadow, instanced forest and litter, painted range, sky
     boardview.js the hex prisms and each player's tableau
     draftview.js the display strip, as an orthographic overlay
     camera.js    the free-roaming board camera
   audio/       every sound effect and the ambient bed, synthesised live
   net/         PeerJS transport, host and client sessions
   ui/          lobby, HUD, settings, modals
+    hexinfo.js   what a hex is doing, for the tooltip that follows the cursor
 ```
 
 Some notes for anyone reading the rendering code:
 
-- The forest is three `InstancedMesh`es, so thousands of trees cost three draw
-  calls. Density is a settings slider rather than a compromise.
+- The forest and the ground litter are six `InstancedMesh`es between them, so
+  several thousand trees, rocks and sticks cost six draw calls. Density is a
+  settings slider rather than a compromise.
+- A habitat half covers three consecutive edges of a tile, so a corridor can
+  never run straight through a split tile along one axis — it has to turn.
 - three.js maps a cylinder cap's UVs from world *z* to *u* and world *x* to *v*,
   so the canvas axes are not world *x*/*z*. Getting that wrong rotates the
   painted hexagon thirty degrees off the prism under it.

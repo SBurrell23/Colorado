@@ -13,10 +13,12 @@ import { settings, saveSettings, qualityOf, openSettingsModal } from './ui/setti
 import { Hud, openHelp } from './ui/hud.js';
 import { Menu } from './ui/menu.js';
 import {
-  $, toast, banner, clearBanner, setScreen, openModal, closeModal, isModalOpen, initTooltips,
+  $, el, toast, banner, clearBanner, setScreen, openModal, closeModal, isModalOpen,
+  initTooltips, showTipAt, hideTip, moveTipTo,
 } from './ui/dom.js';
+import { describeHex } from './ui/hexinfo.js';
 import { canPlaceTile, openTokenHexes, openHexes } from './game/board.js';
-import { ANIMAL_INFO } from './game/tiles.js';
+import { ANIMAL_INFO, HABITAT_INFO } from './game/tiles.js';
 
 const app = {
   renderer: null,
@@ -59,7 +61,7 @@ async function boot() {
   app.hud = new Hud({
     onLeave: () => confirmLeave(),
     onChat: (text) => app.session && app.session.say(text),
-    onFocusSelf: () => focusOn(app.view && app.view.you ? app.view.you.id : null),
+    onFocusSelf: () => focusOn(app.view && app.view.you ? app.view.you.id : null, { refit: true }),
     onWatch: (id) => focusOn(id),
     onRotate: () => rotateHeld(),
     onNatureMode: () => setMode({ kind: 'nature', tile: null, token: null }),
@@ -244,6 +246,7 @@ function bindInput() {
       ? app.draft.hitTest(e.clientX, e.clientY, canvasRect())
       : null;
     app.draft.setHover(over);
+    boardTooltip(e, over);
 
     if (!over && app.view.turnPhase === 'tile' && myTurn()) {
       updateNdc(e);
@@ -268,15 +271,22 @@ function bindInput() {
     }
     if (e.key === 'Escape') {
       if (isModalOpen()) return;
-      if (app.mode) setMode(null);
-      else openSettings();
+      if (app.mode) { setMode(null); return; }
+      // Changed your mind about the pair you took? Put it back.
+      if (myTurn() && app.view.turnPhase === 'tile') {
+        app.board.setGhost(null);
+        app.hoverHex = null;
+        send({ t: 'undraft' });
+        return;
+      }
+      openSettings();
       return;
     }
     if (isModalOpen()) return;
 
     if (e.key === 'r' || e.key === 'R') {
       if (app.view && app.view.turnPhase === 'tile' && myTurn()) rotateHeld();
-      else focusOn(app.view && app.view.you ? app.view.you.id : null);
+      else focusOn(app.view && app.view.you ? app.view.you.id : null, { refit: true });
       return;
     }
     if (e.key === 'h' || e.key === 'H') { openHelp(); return; }
@@ -394,6 +404,58 @@ function onWorldClick(e) {
   }
 }
 
+/**
+ * Hovering a laid tile explains what it is doing: which corridors it is part
+ * of, how the animal on it is faring, where there is still room to build. It
+ * reads every player's land, not just your own.
+ */
+let tipHexKey = null;
+function boardTooltip(e, overStrip) {
+  const v = app.view;
+  if (!v || v.phase !== 'playing' || e.target.id !== 'gl' || app.mode) {
+    if (tipHexKey) { tipHexKey = null; hideTip(); }
+    return;
+  }
+
+  // Over the strip: say what the pair on offer actually is.
+  if (overStrip) {
+    const held = v.turnPhase !== 'draft' && v.pending ? [v.pending] : v.display;
+    const slot = held[overStrip.slot];
+    if (!slot || !slot.tile) { if (tipHexKey) { tipHexKey = null; hideTip(); } return; }
+    const key = 'slot:' + overStrip.slot + ':' + slot.tile.habitats.join('') + (slot.token || '');
+    if (key === tipHexKey) { moveTipTo(e.clientX, e.clientY); return; }
+    tipHexKey = key;
+    const lines = [
+      'Shows ' + slot.tile.wildlife.map((a) => ANIMAL_INFO[a].short.toLowerCase()).join(', ') + '.',
+    ];
+    if (slot.tile.keystone) lines.push('Keystone — settle that animal on it for a nature token.');
+    if (slot.token) lines.push('Comes with ' + ANIMAL_INFO[slot.token].name.toLowerCase() + '.');
+    showTipAt(e.clientX, e.clientY, null,
+      slot.tile.habitats.map((h) => HABITAT_INFO[h].short).join(' / '),
+      el('div', { class: 'tip-lines' }, lines.map((t) => el('div', { text: t }))));
+    return;
+  }
+  updateNdc(e);
+  const hex = app.board.pick(app.raycaster);
+  // While you are holding a tile or a token, your own board belongs to the
+  // ghost preview; a tooltip over the top of it would only be in the way.
+  const busyHere = hex && myTurn() && v.turnPhase !== 'draft' && hex.playerId === v.you.id;
+  const player = hex && !busyHere && v.players.find((p) => p.id === hex.playerId);
+  const info = player && describeHex(player, hex.q, hex.r);
+  if (!info) {
+    if (tipHexKey) { tipHexKey = null; hideTip(); }
+    return;
+  }
+  const key = hex.playerId + ':' + hex.q + ',' + hex.r;
+  if (key === tipHexKey) {
+    moveTipTo(e.clientX, e.clientY);
+    return;
+  }
+  tipHexKey = key;
+  showTipAt(e.clientX, e.clientY, null, player.name + ' · ' + info.title,
+    el('div', { class: 'tip-lines' }, info.lines.map((t) => el('div', { text: t }))));
+}
+
 function send(action) {
   if (!app.session) return;
   app.session.intent(action);
@@ -429,7 +491,15 @@ function syncFraming() {
   app.cam.frameBias = ((top + bottom) / 2 - h / 2) * worldPerPixel;
 }
 
-function focusOn(playerId) {
+/**
+ * Look at a player's land.
+ *
+ * Going to somebody else's board only slides the camera across: whatever
+ * height and angle you had chosen is yours, and having it snap back every time
+ * you glanced at a neighbour was maddening. Only a deliberate "back to my
+ * board" refits the framing.
+ */
+function focusOn(playerId, { refit = false } = {}) {
   if (!playerId || !app.view) return;
   const p = app.view.players.find((x) => x.id === playerId);
   if (!p) return;
@@ -443,8 +513,11 @@ function focusOn(playerId) {
   syncFraming();
   app.cam.focusOn(centre);
   app.cam.setHome(centre, dist, 0.44);
-  app.cam.goalDist = dist;
-  app.cam.goalPitch = 0.44;
+  if (refit) {
+    app.cam.goalDist = dist;
+    app.cam.goalPitch = 0.44;
+    app.cam.goalYaw = -Math.PI * 0.5;
+  }
 }
 
 /** A low, scenic pose for the menus: meadow, trees and the range behind. */
@@ -508,7 +581,7 @@ function onView(view) {
     setScreen('game');
     closeModal();
     app.board.sync(view);
-    focusOn(view.you ? view.you.id : view.order[0]);
+    focusOn(view.you ? view.you.id : view.order[0], { refit: true });
     app.cam.resetView(true);
     app.cam.update(0);
   }

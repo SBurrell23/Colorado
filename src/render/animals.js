@@ -235,7 +235,7 @@ export const ANIMAL_PAINTERS = {
     ctx.restore();
   },
 
-  // Cutthroat trout, nose left: pointed snout, swept dorsal, deeply forked
+  // Rainbow trout, nose left: pointed snout, swept dorsal, deeply forked
   // tail, and the red slash under the jaw that names the fish.
   trout(ctx, R, fill, line) {
     ctx.save();
@@ -276,7 +276,7 @@ export const ANIMAL_PAINTERS = {
     ctx.beginPath();
     ctx.moveTo(-0.64 * R, 0.13 * R);
     ctx.lineTo(-0.44 * R, 0.22 * R);
-    ctx.stroke();                                  // the cutthroat slash
+    ctx.stroke();                                  // the trout's throat slash
     ctx.restore();
     dot(ctx, R, -0.64, -0.04, 0.078);              // eye
     ctx.save();

@@ -70,6 +70,10 @@ export class Menu {
     $('#btn-title-help').addEventListener('click', () => openHelp());
     $('#btn-start').addEventListener('click', () => this.h.onStart());
     $('#btn-lobby-leave').addEventListener('click', () => this.h.onLeave());
+    // The same two doors as the title screen -- people want to set their
+    // volume and reread the rules while they are waiting for the last seat.
+    $('#btn-lobby-settings').addEventListener('click', () => this.h.onOpenSettings());
+    $('#btn-lobby-help').addEventListener('click', () => openHelp());
     $('#btn-copy-code').addEventListener('click', () => this.copyLink());
 
     $('#lobby-chat-form').addEventListener('submit', (e) => {

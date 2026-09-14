@@ -23,7 +23,7 @@ export const ANIMALS = ['bighorn', 'elk', 'trout', 'eagle', 'coyote'];
 export const ANIMAL_INFO = {
   bighorn: { name: 'Bighorn Sheep', short: 'Bighorn', colour: '#c8a678', deep: '#7d6340' },
   elk:     { name: 'Elk',           short: 'Elk',     colour: '#b3763f', deep: '#6d4321' },
-  trout:   { name: 'Cutthroat Trout', short: 'Trout', colour: '#d4635c', deep: '#8a3630' },
+  trout:   { name: 'Rainbow Trout', short: 'Trout', colour: '#d4635c', deep: '#8a3630' },
   eagle:   { name: 'Golden Eagle',  short: 'Eagle',   colour: '#8d8f9c', deep: '#4a4c58' },
   coyote:  { name: 'Coyote',        short: 'Coyote',  colour: '#b9a893', deep: '#6e6153' },
 };

@@ -21,7 +21,14 @@
 
 * { box-sizing: border-box; }
 
+/* A little pine, forest green, the size of the arrow it replaces. The hotspot
+   is the tip of the tree, so it points like a normal cursor does. */
+:root {
+  --cursor-tree: url("data:image/svg+xml,%3Csvg%20xmlns=%22http://www.w3.org/2000/svg%22%20width=%2232%22%20height=%2232%22%20viewBox=%220%200%2032%2032%22%3E%3Cg%20transform=%22translate(10.4%202.2)%20rotate(-22)%20scale(0.88)%20translate(-10.4%20-2.2)%22%3E%3Cg%20fill=%22%23f4efe0%22%20stroke=%22%23f4efe0%22%20stroke-width=%223%22%20stroke-linejoin=%22round%22%20stroke-linecap=%22round%22%3E%3Cpath%20d=%22M8.6%2024.4h3.6v4.4H8.6z%22/%3E%3Cpath%20d=%22M10.4%2015.6.9%2025.4h19z%22/%3E%3Cpath%20d=%22M10.4%209.2%202.2%2019.2h16.4z%22/%3E%3Cpath%20d=%22M10.4%202.2%203.9%2013.4h13z%22/%3E%3C/g%3E%3Cpath%20d=%22M8.6%2024.4h3.6v4.4H8.6z%22%20fill=%22%235a4326%22/%3E%3Cpath%20d=%22M10.4%2015.6.9%2025.4h19z%22%20fill=%22%2326432d%22/%3E%3Cpath%20d=%22M10.4%209.2%202.2%2019.2h16.4z%22%20fill=%22%232f5136%22/%3E%3Cpath%20d=%22M10.4%202.2%203.9%2013.4h13z%22%20fill=%22%233a6b42%22/%3E%3C/g%3E%3C/svg%3E") 10 2, auto;
+}
+
 html, body {
+  cursor: var(--cursor-tree);
   margin: 0;
   padding: 0;
   height: 100%;
@@ -214,7 +221,8 @@ kbd {
 .chat-line .who { font-weight: 700; }
 .chat-line.system { color: var(--ink-dim); font-style: italic; font-size: 0.86rem; }
 
-.lobby-foot { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.lobby-foot { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.lobby-foot #lobby-status { margin-left: auto; text-align: right; }
 
 /* ---------------- HUD ---------------- */
 #hud { position: fixed; inset: 0; z-index: 10; pointer-events: none; }
@@ -224,11 +232,16 @@ kbd {
 .panel-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
 .round-line { font-size: 0.72rem; letter-spacing: 0.18em; text-transform: uppercase; color: var(--ink-dim); }
 .turn-line { font-family: 'Alfa Slab One', serif; font-size: 1.08rem; color: var(--gold-1); margin-top: 3px; line-height: 1.2; }
-.nature {
-  font-family: 'Alfa Slab One', serif; font-size: 1.25rem; color: #bfe6b4;
+/* Scoped to the badge: the field notes also carry a "nature" class, and the
+   slab font made those lines nearly unreadable. */
+#nature-badge {
+  display: flex; align-items: center; gap: 5px;
+  font-family: 'Alfa Slab One', serif; font-size: 1.2rem; color: #d6eecb;
   background: rgba(79, 154, 85, 0.2); border: 1px solid rgba(143, 208, 138, 0.5);
-  border-radius: 9px; padding: 0.1em 0.5em; line-height: 1.25; cursor: inherit;
+  border-radius: 9px; padding: 0.14em 0.5em 0.14em 0.36em; line-height: 1.25; cursor: inherit;
 }
+.nature-mark { width: 1.05em; height: 1.05em; object-fit: contain; vertical-align: -0.16em; }
+.p-nature .nature-mark { width: 13px; height: 13px; }
 
 .timer-wrap { height: 4px; border-radius: 3px; background: rgba(255,255,255,0.12); overflow: hidden; }
 #timer-bar { height: 100%; width: 100%; background: linear-gradient(90deg, var(--gold), var(--gold-1)); transition: width 0.25s linear; }
@@ -251,7 +264,7 @@ kbd {
   padding: 0.05em 0.28em; margin-left: 6px; vertical-align: 1px;
 }
 .p-right { display: flex; align-items: center; gap: 8px; font-size: 0.84rem; color: var(--ink-dim); }
-.p-nature { color: #a8d6a0; font-weight: 700; }
+.p-nature { color: #a8d6a0; font-weight: 600; display: flex; align-items: center; gap: 3px; }
 
 .panel-foot {
   display: flex; justify-content: space-between; align-items: center;
@@ -271,9 +284,40 @@ kbd {
   padding: 0.46em 1.05em; font-size: 0.96rem; box-shadow: var(--shadow);
 }
 .prompt strong { color: var(--gold-1); }
-.action-buttons { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+.action-buttons { display: flex; gap: 9px; flex-wrap: wrap; justify-content: center; }
 
-#log-panel { position: absolute; left: 14px; bottom: 14px; width: 292px; max-height: 32vh; display: flex; flex-direction: column; padding: 8px 10px 10px; }
+/* The two optional moves of the draft. They are offers, not instructions, so
+   they read as raised wooden tokens rather than as another grey button. */
+.act-btn {
+  display: inline-flex; align-items: center; gap: 7px;
+  font-size: 0.92rem; font-weight: 700; letter-spacing: 0.01em;
+  padding: 0.56em 1.05em; border-radius: 11px;
+  border: 1px solid rgba(246, 239, 221, 0.28);
+  box-shadow: 0 6px 16px rgba(6, 12, 9, 0.42), inset 0 1px 0 rgba(255,255,255,0.18);
+}
+.act-nature, .act-cull-cost {
+  color: #e6f6dd;
+  background: linear-gradient(180deg, #59915d 0%, #3d6b45 62%, #2c5134 100%);
+  border-color: rgba(168, 214, 160, 0.55);
+}
+.act-nature:hover:not(:disabled), .act-cull-cost:hover:not(:disabled) {
+  box-shadow: 0 0 18px rgba(143, 208, 138, 0.42), inset 0 1px 0 rgba(255,255,255,0.22);
+  border-color: #bfe6b4;
+}
+.act-cull {
+  color: #2a1108;
+  background: linear-gradient(180deg, #f0a071 0%, var(--rust) 58%, #8f3d27 100%);
+  border-color: rgba(255, 214, 192, 0.8);
+  animation: act-pulse 2.2s ease-in-out infinite;
+}
+.act-cull:hover:not(:disabled) { box-shadow: 0 0 20px rgba(196, 98, 63, 0.6); animation: none; }
+@keyframes act-pulse {
+  0%, 100% { box-shadow: 0 6px 16px rgba(6,12,9,0.42), inset 0 1px 0 rgba(255,255,255,0.18); }
+  50% { box-shadow: 0 6px 22px rgba(196, 98, 63, 0.55), inset 0 1px 0 rgba(255,255,255,0.18); }
+}
+.act-btn:disabled { filter: grayscale(0.55); }
+
+#log-panel { position: absolute; left: 14px; bottom: 14px; width: 306px; max-height: 56vh; display: flex; flex-direction: column; padding: 8px 10px 10px; }
 #log-panel.collapsed .scroller, #log-panel.collapsed .chat-form { display: none !important; }
 .tabs { display: flex; align-items: center; gap: 4px; margin-bottom: 6px; }
 .tab {
@@ -284,10 +328,10 @@ kbd {
 .tab:hover { box-shadow: none; transform: none; color: var(--ink); }
 .tab.active { color: var(--gold); border-bottom-color: var(--gold); }
 .collapse { margin-left: auto; background: none; border: none; padding: 0 4px; color: var(--ink-dim); }
-#log-panel .scroller { max-height: 22vh; min-height: 64px; }
+#log-panel .scroller { max-height: 44vh; min-height: 148px; }
 .log-line { font-size: 0.86rem; line-height: 1.35; margin: 2px 0; color: var(--ink-dim); }
 .log-line.round { color: var(--gold); border-top: 1px solid var(--edge-soft); padding-top: 5px; margin-top: 5px; }
-.log-line.nature { color: #a8d6a0; }
+.log-line.nature { color: #a8d6a0; font-family: inherit; font-size: 0.86rem; font-weight: 400; }
 .log-line.cull { color: #e8a06a; }
 .log-line.token { color: var(--ink); }
 
@@ -372,13 +416,32 @@ kbd {
 .score-table tr.win td { color: var(--gold-1); }
 .score-table th img { width: 22px; height: 22px; vertical-align: middle; }
 
+.help ul.examples li, .rule-row[data-example], .hab-strip span {
+  border-radius: 8px; transition: background 0.15s ease;
+}
+.help ul.examples li:hover, .rule-row[data-example]:hover, .hab-strip span:hover {
+  background: rgba(232, 198, 90, 0.11);
+}
+.help ul.examples li { padding: 2px 6px; margin-left: -6px; }
+.hab-strip { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 2px; }
+.hab-strip span {
+  font-size: 0.82rem; padding: 0.3em 0.7em;
+  border: 1px solid var(--edge-soft); background: rgba(0,0,0,0.22);
+}
+
 /* ---------------- tooltips ---------------- */
 .tooltip {
   position: fixed; z-index: 50; max-width: 262px; padding: 9px 12px; border-radius: 10px;
   background: linear-gradient(170deg, rgba(38, 56, 48, 0.97), rgba(14, 24, 20, 0.98));
   border: 1px solid var(--edge); box-shadow: var(--shadow);
-  pointer-events: none; display: grid; gap: 3px;
+  pointer-events: none; display: grid; gap: 3px; grid-template-columns: minmax(0, 1fr);
   animation: tip-in 0.13s ease both;
+}
+.tooltip.rich { max-width: 340px; }
+.tooltip .tip-lines { display: grid; gap: 3px; font-size: 0.86rem; line-height: 1.38; color: var(--ink); }
+.tooltip .tip-diagram {
+  display: block; margin: 5px auto 1px; max-width: 100%; height: auto; justify-self: center;
+  filter: drop-shadow(0 3px 8px rgba(0,0,0,0.4));
 }
 .tooltip strong { font-size: 0.74rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--gold); }
 .tooltip span { font-size: 0.88rem; line-height: 1.4; color: var(--ink); }
@@ -412,13 +475,16 @@ kbd {
 @keyframes peak-pulse { 0%,100% { transform: translateY(4px) scale(0.92); opacity: 0.7; } 50% { transform: translateY(-4px) scale(1.05); opacity: 1; } }
 
 /* The themed cursor lives on <body>; nothing in the UI should replace it. */
-button, select, label, .switch, .nature, #deck-count, .tab, .help-tab { cursor: inherit; }
+button, select, label, .switch, #nature-badge, #deck-count, .tab, .help-tab { cursor: inherit; }
 input[type="text"], input:not([type]), textarea { cursor: text; }
 
 /* ---------------- responsive ---------------- */
 @media (max-width: 1160px) {
   .action-bar { top: auto; bottom: calc(var(--draft-h, 250px) + 6px); max-width: min(620px, 92vw); }
   #toasts { top: 74px; }
+  /* Not enough width left beside the draft strip: stack the notes above it. */
+  #log-panel { bottom: calc(var(--draft-h, 250px) + 78px); max-height: 34vh; }
+  #log-panel .scroller { max-height: 26vh; min-height: 96px; }
 }
 @media (max-width: 960px) {
   .lobby-body { grid-template-columns: 1fr; }

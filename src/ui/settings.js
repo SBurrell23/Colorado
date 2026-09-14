@@ -3,7 +3,7 @@
 
 import { el, clear, openModal } from './dom.js';
 
-const STORE_KEY = 'colorado.settings.v2';
+const STORE_KEY = 'colorado.settings.v3';
 
 export const DEFAULTS = {
   // sound
@@ -17,17 +17,17 @@ export const DEFAULTS = {
   antialias: true,
   resolution: 1,
   shadows: true,
-  treeCount: 1100,
+  treeCount: 3200,
   clouds: true,
-  fogFar: 360,
+  fogFar: 420,
   showFps: false,
 };
 
 export const PRESETS = {
-  low:      { fpsCap: 30, antialias: false, resolution: 0.7, shadows: false, treeCount: 350,  clouds: false, fogFar: 220 },
-  balanced: { fpsCap: 60, antialias: true,  resolution: 1,   shadows: true,  treeCount: 1100, clouds: true,  fogFar: 360 },
-  high:     { fpsCap: 120, antialias: true, resolution: 1.3, shadows: true,  treeCount: 2000, clouds: true,  fogFar: 460 },
-  ultra:    { fpsCap: 0,  antialias: true,  resolution: 2,   shadows: true,  treeCount: 3200, clouds: true,  fogFar: 560 },
+  low:      { fpsCap: 30, antialias: false, resolution: 0.7, shadows: false, treeCount: 900,  clouds: false, fogFar: 260 },
+  balanced: { fpsCap: 60, antialias: true,  resolution: 1,   shadows: true,  treeCount: 3200, clouds: true,  fogFar: 420 },
+  high:     { fpsCap: 120, antialias: true, resolution: 1.3, shadows: true,  treeCount: 4800, clouds: true,  fogFar: 520 },
+  ultra:    { fpsCap: 0,  antialias: true,  resolution: 2,   shadows: true,  treeCount: 7000, clouds: true,  fogFar: 620 },
 };
 
 function load() {
@@ -147,9 +147,9 @@ export function openSettingsModal(onChange) {
     slider('resolution', 0.5, 2, 0.1, (v) => Math.round(v * 100) + '%', apply)));
   body.appendChild(row('Shadows', null, toggle('shadows', apply)));
   body.appendChild(row('Forest density', 'Instanced — thousands of trees cost three draw calls.',
-    slider('treeCount', 0, 3600, 100, (v) => String(Math.round(v)), apply)));
+    slider('treeCount', 0, 8000, 200, (v) => String(Math.round(v)), apply)));
   body.appendChild(row('Clouds', null, toggle('clouds', apply)));
-  body.appendChild(row('View distance', null, slider('fogFar', 160, 640, 20, (v) => Math.round(v) + 'm', apply)));
+  body.appendChild(row('View distance', null, slider('fogFar', 200, 700, 20, (v) => Math.round(v) + 'm', apply)));
   body.appendChild(row('Show FPS counter', null, toggle('showFps', apply)));
 
   function refreshSwitchLabels() {

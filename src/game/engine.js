@@ -265,6 +265,7 @@ export class Engine {
     switch (msg.t) {
       case 'cull':      return this.actCull(p, msg);
       case 'draft':     return this.actDraft(p, msg);
+      case 'undraft':   return this.actUndraft(p);
       case 'placeTile': return this.actPlaceTile(p, msg);
       case 'placeToken':return this.actPlaceToken(p, msg);
       default:          return { error: 'Unknown move.' };
@@ -326,8 +327,29 @@ export class Engine {
 
     s.display[tileIdx].tile = null;
     if (token) s.display[tokenIdx].token = null;
-    s.pending = { tile, token, tileIdx, tokenIdx };
+    s.pending = { tile, token, tileIdx, tokenIdx, spent: tileIdx !== tokenIdx };
     s.turnPhase = 'tile';
+    this.onSfx('draft');
+    return { ok: true };
+  }
+
+  /**
+   * Put an untouched pair back on offer. Nothing has happened to the board
+   * yet, so this is a clean undo -- including the nature token if picking a
+   * mismatched pair is what cost one.
+   */
+  actUndraft(p) {
+    const s = this.state;
+    if (s.turnPhase !== 'tile' || !s.pending) return { error: 'Nothing to put back.' };
+    const { tile, token, tileIdx, tokenIdx, spent } = s.pending;
+    s.display[tileIdx].tile = tile;
+    if (token) s.display[tokenIdx].token = token;
+    if (spent && s.natureLeft > 0) {
+      p.nature += 1;
+      s.natureLeft -= 1;
+    }
+    s.pending = null;
+    s.turnPhase = 'draft';
     this.onSfx('draft');
     return { ok: true };
   }

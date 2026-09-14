@@ -307,6 +307,37 @@ console.log('\nnature tokens');
   check('settling a keystone earns a nature token', p2.nature === 1, String(p2.nature));
 }
 
+// --- taking a pair back -----------------------------------------------------
+console.log('\nputting a pair back');
+{
+  const e = new Engine();
+  e.addPlayer('a', 'A', true);
+  e.addPlayer('b', 'B', false);
+  e.startGame();
+  const id = e.currentPlayerId();
+  const before = e.state.display.map((d) => (d.tile ? d.tile.id : null));
+  e.handle(id, { t: 'draft', index: 1 });
+  check('drafting empties the slot', e.state.display[1].tile === null);
+  e.handle(id, { t: 'undraft' });
+  check('escape puts the tile back', e.state.display[1].tile.id === before[1]);
+  check('and the turn is back at the draft', e.state.turnPhase === 'draft');
+  check('and it is still the same ranger', e.currentPlayerId() === id);
+
+  // A mismatched pair costs a token; putting it back returns the token.
+  const p = e.state.players[id];
+  p.nature = 1;
+  e.state.natureLeft -= 1;
+  e.handle(id, { t: 'draft', tileIndex: 0, tokenIndex: 2 });
+  check('a mismatched pair costs a token', p.nature === 0);
+  e.handle(id, { t: 'undraft' });
+  check('putting it back refunds the token', p.nature === 1, String(p.nature));
+  check('and both slots are whole again',
+    !!e.state.display[0].tile && !!e.state.display[2].token);
+
+  const again = e.handle(id, { t: 'undraft' });
+  check('nothing to put back once the draft is undone', !!again.error);
+}
+
 // --- illegal moves ----------------------------------------------------------
 console.log('\nillegal moves');
 {

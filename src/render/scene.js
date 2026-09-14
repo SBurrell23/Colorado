@@ -29,10 +29,11 @@ function makeSkyPanorama(w = 2048, h = 1024) {
 
   const g = ctx.createLinearGradient(0, 0, 0, h);
   g.addColorStop(0.00, '#1f4f86');
-  g.addColorStop(0.16, '#3d76ab');
-  g.addColorStop(0.30, '#6c9ec9');
-  g.addColorStop(0.40, '#a2c4dd');
-  g.addColorStop(0.465, '#c9d8e6');
+  g.addColorStop(0.18, '#3f78ac');
+  g.addColorStop(0.32, '#7aa8ce');
+  g.addColorStop(0.42, '#aecbe1');
+  // No flat step anywhere near the horizon: the last stretch eases into the
+  // fog colour so there is no band where the haze stops and the sky starts.
   g.addColorStop(0.50, '#c9d8e6');   // pinned to the scene fog colour
   g.addColorStop(1.00, '#c9d8e6');
   ctx.fillStyle = g;
@@ -60,11 +61,14 @@ function makeSkyPanorama(w = 2048, h = 1024) {
   }
   ctx.restore();
 
-  // Three ranges, farthest and hazi/est first.
+  // Three ranges, farthest and haziest first. They are kept low deliberately:
+  // the board camera looks down, so only a few degrees of sky are ever in
+  // frame, and a taller range just gets its summits sliced off by the top of
+  // the screen. At these heights the whole skyline fits.
   const ranges = [
-    { top: 0.40, colour: '#96aec6', jag: 0.028, step: 0.055, haze: 0.55 },
-    { top: 0.425, colour: '#7b92ad', jag: 0.036, step: 0.042, haze: 0.34 },
-    { top: 0.448, colour: '#5c7189', jag: 0.03, step: 0.031, haze: 0.16 },
+    { top: 0.434, colour: '#9db3c8', jag: 0.016, step: 0.055, haze: 0.55 },
+    { top: 0.449, colour: '#8398b1', jag: 0.020, step: 0.042, haze: 0.34 },
+    { top: 0.464, colour: '#66798f', jag: 0.015, step: 0.031, haze: 0.16 },
   ];
   for (const range of ranges) {
     ctx.save();
@@ -94,12 +98,12 @@ function makeSkyPanorama(w = 2048, h = 1024) {
       while (sx <= w) {
         const peak = h * range.top + (Math.random() - 0.4) * h * range.jag;
         ctx.beginPath();
-        ctx.moveTo(sx, peak + h * 0.03);
-        ctx.lineTo(sx + w * range.step * 0.5, peak - h * 0.01);
-        ctx.lineTo(sx + w * range.step, peak + h * 0.03);
-        ctx.lineTo(sx + w * range.step * 0.7, peak + h * 0.02);
-        ctx.lineTo(sx + w * range.step * 0.5, peak + h * 0.035);
-        ctx.lineTo(sx + w * range.step * 0.3, peak + h * 0.018);
+        ctx.moveTo(sx, peak + h * 0.016);
+        ctx.lineTo(sx + w * range.step * 0.5, peak - h * 0.006);
+        ctx.lineTo(sx + w * range.step, peak + h * 0.016);
+        ctx.lineTo(sx + w * range.step * 0.7, peak + h * 0.011);
+        ctx.lineTo(sx + w * range.step * 0.5, peak + h * 0.019);
+        ctx.lineTo(sx + w * range.step * 0.3, peak + h * 0.01);
         ctx.closePath();
         ctx.fill();
         sx += w * range.step;
@@ -115,6 +119,16 @@ function makeSkyPanorama(w = 2048, h = 1024) {
     ctx.fillRect(0, h * range.top, w, horizon - h * range.top);
     ctx.restore();
   }
+
+  // One last band of haze right along the horizon, unbroken all the way round.
+  // Without it the skyline meets the fogged ground on a hard line; with it the
+  // two dissolve into each other whichever way the camera is pointing.
+  const rim = ctx.createLinearGradient(0, h * 0.438, 0, h * 0.512);
+  rim.addColorStop(0.00, 'rgba(201,216,230,0)');
+  rim.addColorStop(0.55, 'rgba(201,216,230,0.72)');
+  rim.addColorStop(1.00, 'rgba(201,216,230,1)');
+  ctx.fillStyle = rim;
+  ctx.fillRect(0, h * 0.438, w, h * 0.075);
 
   return c;
 }
@@ -173,10 +187,12 @@ export class World {
     this.quality = quality;
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(HORIZON_COLOUR);
-    this.scene.fog = new THREE.Fog(HORIZON_COLOUR, 70, quality.fogFar || 320);
+    this.scene.fog = new THREE.Fog(HORIZON_COLOUR, 34, quality.fogFar || 360);
     this.time = 0;
     this.trees = null;
     this.treeParts = null;
+    this.litter = null;
+    this.litterParts = null;
     this.clouds = [];
 
     this.buildSky();
@@ -254,7 +270,7 @@ export class World {
     // rather than a circle: wider across than it is deep.
     const CLEAR_X = 78;
     const CLEAR_Z = 60;
-    const FAR = 340;
+    const FAR = 620;   // runs well past the fog, so the tree line dissolves
 
     const pines = [];
     const aspens = [];
@@ -264,7 +280,7 @@ export class World {
       const a = Math.random() * Math.PI * 2;
       // Square-root radius spreads trees evenly by area; the extra power pulls
       // the crowd in towards the tree line where it is actually seen.
-      const t = Math.pow(Math.random(), 1.7);
+      const t = Math.pow(Math.random(), 2.1);
       const ring = 1 + t * (FAR / CLEAR_X - 1);
       const x = Math.cos(a) * CLEAR_X * ring + (Math.random() - 0.5) * 9;
       const z = Math.sin(a) * CLEAR_Z * ring + (Math.random() - 0.5) * 9;
@@ -340,9 +356,112 @@ export class World {
     this.trees = group;
     this.treeParts = [pineMesh, aspenMesh, trunkMesh];
     this.scene.add(group);
+    this.buildLitter();
+  }
+
+  /**
+   * Rocks, deadfall and low scrub over the meadow floor, so the ground is not
+   * a bare sheet of green. Instanced like the forest, and kept off every place
+   * a board mat could land -- board origins always sit on a lattice of
+   * multiples of BOARD_BACK/BOARD_ACROSS, so a single radius test clears the
+   * lot whatever the player count turns out to be.
+   */
+  buildLitter() {
+    this.disposeLitter();
+    const count = Math.round(this.quality.treeCount * 0.55);
+    if (!count) return;
+
+    // Every possible board centre, for any layout from one player to nine.
+    const seats = [];
+    for (const x of [-40, -20, 0, 20, 40]) {
+      for (const z of [-42, -21, 0, 21, 42]) seats.push([x, z]);
+    }
+    const onAMat = (x, z) => seats.some(([sx, sz]) => Math.hypot(x - sx, z - sz) < 19.5);
+
+    const rocks = [];
+    const shrubs = [];
+    const sticks = [];
+    let guard = 0;
+    while (rocks.length + shrubs.length + sticks.length < count && guard < count * 25) {
+      guard++;
+      const a = Math.random() * Math.PI * 2;
+      const rad = 14 + Math.pow(Math.random(), 0.75) * 300;
+      const x = Math.cos(a) * rad;
+      const z = Math.sin(a) * rad * 0.92;
+      if (onAMat(x, z)) continue;
+      const item = { x, z, rot: Math.random() * Math.PI * 2, s: 0.5 + Math.random() * Math.random() * 2.4 };
+      const roll = Math.random();
+      (roll < 0.42 ? shrubs : roll < 0.76 ? rocks : sticks).push(item);
+    }
+
+    const group = new THREE.Group();
+    const dummy = new THREE.Object3D();
+    const colour = new THREE.Color();
+    const mat = () => new THREE.MeshLambertMaterial({});
+
+    const rockMesh = new THREE.InstancedMesh(new THREE.DodecahedronGeometry(1, 0), mat(), rocks.length);
+    const shrubMesh = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 0), mat(), shrubs.length);
+    const stickMesh = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.1, 0.13, 1, 5), mat(), sticks.length);
+
+    const ROCK = [0x8d8b7e, 0x76766c, 0x9c9587, 0x6d6a60];
+    const SCRUB = [0x5f7a45, 0x6e8a4e, 0x4e6a3c, 0x83924f];
+    const WOOD = [0x6b5539, 0x7d6544, 0x554129];
+
+    rocks.forEach((it, i) => {
+      dummy.position.set(it.x, it.s * 0.24 - 0.42, it.z);
+      dummy.rotation.set(Math.random() * 0.5, it.rot, Math.random() * 0.5);
+      dummy.scale.set(it.s * 0.9, it.s * 0.55, it.s);
+      dummy.updateMatrix();
+      rockMesh.setMatrixAt(i, dummy.matrix);
+      rockMesh.setColorAt(i, colour.setHex(ROCK[i % ROCK.length]));
+    });
+
+    shrubs.forEach((it, i) => {
+      dummy.position.set(it.x, it.s * 0.34 - 0.42, it.z);
+      dummy.rotation.set(0, it.rot, 0);
+      dummy.scale.set(it.s * 0.95, it.s * 0.62, it.s * 0.95);
+      dummy.updateMatrix();
+      shrubMesh.setMatrixAt(i, dummy.matrix);
+      shrubMesh.setColorAt(i, colour.setHex(SCRUB[i % SCRUB.length]));
+    });
+
+    sticks.forEach((it, i) => {
+      // Lying flat, tipped a little so they do not look laid out in a row.
+      dummy.position.set(it.x, 0.06 - 0.42 + it.s * 0.05, it.z);
+      dummy.rotation.set(Math.PI / 2 + (Math.random() - 0.5) * 0.25, it.rot, 0);
+      dummy.scale.set(it.s * 0.5, it.s * 2.4, it.s * 0.5);
+      dummy.updateMatrix();
+      stickMesh.setMatrixAt(i, dummy.matrix);
+      stickMesh.setColorAt(i, colour.setHex(WOOD[i % WOOD.length]));
+    });
+
+    this.litterParts = [rockMesh, shrubMesh, stickMesh];
+    for (const m of this.litterParts) {
+      m.instanceMatrix.needsUpdate = true;
+      if (m.instanceColor) m.instanceColor.needsUpdate = true;
+      m.frustumCulled = false;
+      m.castShadow = false;
+      m.receiveShadow = false;
+      if (m.count) group.add(m);
+    }
+    this.litter = group;
+    this.scene.add(group);
+  }
+
+  disposeLitter() {
+    if (!this.litter) return;
+    this.scene.remove(this.litter);
+    for (const m of this.litterParts || []) {
+      m.geometry.dispose();
+      m.material.dispose();
+      m.dispose();
+    }
+    this.litter = null;
+    this.litterParts = null;
   }
 
   disposeTrees() {
+    this.disposeLitter();
     if (!this.trees) return;
     this.scene.remove(this.trees);
     for (const m of this.treeParts || []) {
@@ -379,7 +498,7 @@ export class World {
     this.buildTrees();
     this.buildClouds();
     this.setShadows(quality.shadows);
-    this.scene.fog.far = quality.fogFar || 320;
+    this.scene.fog.far = quality.fogFar || 360;
   }
 
   update(dt, camera) {

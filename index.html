@@ -35,18 +35,20 @@
         <div class="turn-line" id="turn-line">Waiting…</div>
       </div>
       <div id="nature-badge" class="nature" data-tip-title="Your nature tokens"
-           data-tip="Spend one to take any tile with any animal, or to clear tokens you do not want. Each one left at the end is worth a point.">0</div>
+           data-tip="Spend one to take any tile with any animal, or to clear tokens you do not want. Each one left at the end is worth a point."><span>0</span></div>
     </div>
     <div id="timer-wrap" class="timer-wrap hidden"><div id="timer-bar"></div></div>
     <ul id="player-list"></ul>
     <div class="panel-foot">
       <span id="deck-count" data-tip-title="Tiles left in the stack"
             data-tip="When everyone has taken their last turn the season ends and the scoring begins.">Stack 0</span>
-      <button id="btn-rules" class="text-btn">Scoring</button>
+      <button id="btn-rules" class="text-btn" data-tip-title="Scoring reference"
+              data-tip="Every animal's rule and the exact point tables, with a worked example on each.">Scoring</button>
     </div>
   </div>
 
   <div id="top-right" class="toolbar">
+    <button id="btn-tally" class="ghost-btn hidden" data-tip="Open the season's tally again">Tally</button>
     <button id="btn-help" class="icon-btn" data-tip="How to play (H)">?</button>
     <button id="btn-settings" class="icon-btn" data-tip="Settings (Esc)">⚙</button>
     <button id="btn-camera" class="icon-btn" data-tip="Back to your board (R)">⌖</button>
@@ -159,6 +161,8 @@
 
       <footer class="lobby-foot">
         <button id="btn-lobby-leave" class="ghost-btn">Leave</button>
+        <button id="btn-lobby-settings" class="ghost-btn" data-tip="Sound and graphics">Settings</button>
+        <button id="btn-lobby-help" class="ghost-btn" data-tip="The rules, in brief">How to Play</button>
         <div id="lobby-status" class="status"></div>
         <button id="btn-start" class="big-btn primary">Set Out</button>
       </footer>
