@@ -9,9 +9,10 @@ import { DraftView } from './render/draftview.js';
 import { BoardCamera } from './render/camera.js';
 import { audio } from './audio/audio.js';
 import { HostSession, ClientSession } from './net/session.js';
+import { normaliseCode } from './net/net.js';
 import { settings, saveSettings, qualityOf, openSettingsModal } from './ui/settings.js';
 import { Hud, openHelp } from './ui/hud.js';
-import { Menu } from './ui/menu.js';
+import { Menu, savedName } from './ui/menu.js';
 import {
   $, el, toast, banner, clearBanner, setScreen, openModal, closeModal, isModalOpen,
   initTooltips, showTipAt, hideTip, moveTipTo,
@@ -64,6 +65,7 @@ async function boot() {
     onFocusSelf: () => focusOn(app.view && app.view.you ? app.view.you.id : null, { refit: true }),
     onWatch: (id) => focusOn(id),
     onRotate: () => rotateHeld(),
+    onSkipToken: () => send({ t: 'skipToken' }),
     onNatureMode: () => setMode({ kind: 'nature', tile: null, token: null }),
     onCullMode: () => setMode({ kind: 'cull', picked: new Set() }),
     onQuickCull: () => send({ t: 'cull', indices: app.view.matching }),
@@ -101,10 +103,36 @@ async function boot() {
 
   setScreen('title');
   requestAnimationFrame(loop);
+  openInvite();
 
   const loading = $('#loading');
   loading.classList.add('gone');
   setTimeout(() => loading.remove(), 800);
+}
+
+/**
+ * An invite link carries the code in the query string. Fill it in, and if this
+ * browser already knows whose it is, walk straight through the door.
+ */
+function openInvite() {
+  let code = null;
+  try {
+    code = normaliseCode(new URLSearchParams(location.search).get('game') || '');
+  } catch (err) { /* no URL API worth worrying about */ }
+  if (!code) return;
+  // Leave the address bar clean, so a reload does not re-join a finished game.
+  try { history.replaceState(null, '', location.pathname); } catch (err) { /* ignore */ }
+
+  const input = $('#code-input');
+  if (input) input.value = code;
+  const name = savedName();
+  if (name.trim()) {
+    joinGame(code, name.trim());
+  } else {
+    app.menu.setStatus('Invited to game ' + code + ' — put a name in and join.');
+    const nameInput = $('#name-input');
+    if (nameInput) nameInput.focus();
+  }
 }
 
 function waitForFonts() {

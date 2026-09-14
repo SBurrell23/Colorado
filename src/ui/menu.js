@@ -74,7 +74,8 @@ export class Menu {
     // volume and reread the rules while they are waiting for the last seat.
     $('#btn-lobby-settings').addEventListener('click', () => this.h.onOpenSettings());
     $('#btn-lobby-help').addEventListener('click', () => openHelp());
-    $('#btn-copy-code').addEventListener('click', () => this.copyLink());
+    $('#btn-copy-code').addEventListener('click', () => this.copyCode());
+    $('#btn-copy-link').addEventListener('click', () => this.copyLink());
 
     $('#lobby-chat-form').addEventListener('submit', (e) => {
       e.preventDefault();
@@ -122,14 +123,24 @@ export class Menu {
     if (busy && label) this.setStatus(label);
   }
 
+  /** Just the code, for reading out loud or pasting into the join box. */
+  copyCode() {
+    const code = this.view && this.view.code;
+    if (!code) return;
+    this.copy(code, 'Code ' + code + ' copied.');
+  }
+
   copyLink() {
     const code = this.view && this.view.code;
     if (!code) return;
-    const url = location.origin + location.pathname + '?game=' + code;
-    const done = () => toast('Invite link copied.', 'good');
+    this.copy(location.origin + location.pathname + '?game=' + code, 'Invite link copied.');
+  }
+
+  copy(text, message) {
+    const done = () => toast(message, 'good');
     if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(url).then(done, () => this.fallbackCopy(url, done));
-    } else this.fallbackCopy(url, done);
+      navigator.clipboard.writeText(text).then(done, () => this.fallbackCopy(text, done));
+    } else this.fallbackCopy(text, done);
   }
 
   fallbackCopy(text, done) {

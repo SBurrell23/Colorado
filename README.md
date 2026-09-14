@@ -39,7 +39,8 @@ both of the edges they press together show that habitat.
    from one pair and a token from another costs a nature token.
 2. **Lay the tile.** It has to touch what you already have. Rotate with **R**.
 3. **Settle the token.** It can only go on a tile showing that animal, on a tile
-   with no token yet. If there is nowhere for it, it goes back to the wild.
+   with no token yet. If there is nowhere for it — or you would rather not have
+   it, because a third bighorn spoils a pair — it goes back to the bag.
 
 Laying a keystone tile — one that shows a single animal — and settling that
 animal on it earns you a nature token. Four matching tokens in the display clear
@@ -79,8 +80,9 @@ outcome each time. The deploy workflow will not publish a build that fails it.
 
 ## What is drawn where
 
-Every pixel in the game is generated at runtime — there is not a single image,
-font file or sound file in the repository.
+Every pixel in the game is generated at runtime, and every sound effect with
+it — there is not a single image or font file in the repository. The one asset
+is the background music.
 
 ```
 src/
@@ -99,7 +101,8 @@ src/
     boardview.js the hex prisms and each player's tableau
     draftview.js the display strip, as an orthographic overlay
     camera.js    the free-roaming board camera
-  audio/       every sound effect and the ambient bed, synthesised live
+  audio/       every sound effect and the wind, synthesised live
+assets/music/  the one recording: the background track
   net/         PeerJS transport, host and client sessions
   ui/          lobby, HUD, settings, modals
     hexinfo.js   what a hex is doing, for the tooltip that follows the cursor

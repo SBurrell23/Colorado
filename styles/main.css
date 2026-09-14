@@ -207,6 +207,8 @@ kbd {
 .code-box { background: var(--panel-solid); border: 1px solid var(--edge); border-radius: 11px; padding: 9px 16px; text-align: right; }
 .code-label { font-size: 0.68rem; letter-spacing: 0.2em; text-transform: uppercase; color: var(--ink-dim); }
 .code-row { display: flex; align-items: center; gap: 12px; }
+.code-copy { display: flex; gap: 6px; }
+.code-copy .ghost-btn { font-size: 0.78rem; padding: 0.42em 0.7em; }
 .code-row strong { font-family: 'Alfa Slab One', serif; font-size: 1.8rem; letter-spacing: 0.22em; color: var(--gold-1); }
 
 .lobby-body { display: grid; grid-template-columns: 1fr 1.15fr 1fr; gap: 16px; align-items: start; }

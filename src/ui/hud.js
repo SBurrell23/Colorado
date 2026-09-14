@@ -77,7 +77,9 @@ export class Hud {
     this.renderLog();
     this.renderChat();
     this.renderPrompt();
-    if (view.phase !== 'gameEnd') show($('#btn-tally'), false);
+    // The tally chip is simply part of the end of a game: however the sheet was
+    // dismissed -- the button, the cross or Escape -- it is there to bring back.
+    show($('#btn-tally'), view.phase === 'gameEnd');
     if (view.phase === 'gameEnd' && (!prev || prev.phase !== 'gameEnd')) this.showResult(view);
   }
 
@@ -239,6 +241,13 @@ export class Hud {
       const a = v.pending && v.pending.token;
       prompt.innerHTML = 'Settle the <strong>' + escapeHtml(a ? ANIMAL_INFO[a].name : 'animal')
         + '</strong> on a tile showing its mark.';
+      buttons.appendChild(el('button', {
+        class: 'ghost-btn', text: 'Wave it on',
+        'data-tip-title': 'Send it back to the wild',
+        'data-tip': 'You are never made to settle an animal. A third bighorn spoils a pair and a '
+          + 'second eagle spoils a ridge, so sometimes the best place for one is the bag.',
+        onclick: () => this.h.onSkipToken(),
+      }));
     }
   }
 
@@ -312,16 +321,13 @@ export class Hud {
     const isHost = v.you && v.you.isHost;
     // Putting the tally down to walk the boards is half the fun of the end of
     // a game, so it folds away to a button rather than trapping you.
-    const actions = [{
-      label: 'Look at the boards',
-      onClick: () => show($('#btn-tally'), true),
-    }];
+    const actions = [{ label: 'Look at the boards' }];
     if (isHost) actions.push({ label: 'Back to the trailhead', onClick: () => this.h.onBackToLobby() });
     actions.push({ label: 'Leave', onClick: () => this.h.onLeave() });
     actions[isHost ? 1 : 0].primary = true;
 
     openModal({ title: 'The Season’s Tally', body, wide: true, actions });
-    show($('#btn-tally'), false);
+    show($('#btn-tally'), true);
   }
 }
 
@@ -421,7 +427,7 @@ const HELP_TABS = [
         <li><b>Lay the tile</b> anywhere against your land. Turn it however you like — habitats do
           not have to match to be placed, only to join into a corridor.</li>
         <li><b>Settle the animal</b> on any tile of yours showing its mark and not already taken.
-          If nowhere will have it, it goes back to the wild.</li>
+          If nowhere will have it — or you would rather not have it — it goes back to the wild.</li>
       </ul>
 
       <h4 class="with-mark">{{nature-lg}}Nature tokens</h4>

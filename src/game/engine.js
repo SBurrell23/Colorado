@@ -268,6 +268,7 @@ export class Engine {
       case 'undraft':   return this.actUndraft(p);
       case 'placeTile': return this.actPlaceTile(p, msg);
       case 'placeToken':return this.actPlaceToken(p, msg);
+      case 'skipToken': return this.actSkipToken(p);
       default:          return { error: 'Unknown move.' };
     }
   }
@@ -368,7 +369,10 @@ export class Engine {
     // With no token drawn, or nowhere to put it, the turn ends here.
     const token = s.pending.token;
     if (!token || !openTokenHexes(p.env, token).length) {
-      if (token) this.log('No room for the ' + token + ' — it goes back to the wild.', 'skip', { by: p.id });
+      if (token) {
+        this.bag.push(token);
+        this.log('No room for the ' + token + ' — it goes back to the wild.', 'skip', { by: p.id });
+      }
       this.finishTurn(p);
       return { ok: true };
     }
@@ -394,6 +398,27 @@ export class Engine {
       this.log(p.name + ' earns a nature token.', 'nature', { by: p.id });
       this.onSfx('nature');
     }
+    this.finishTurn(p);
+    return { ok: true };
+  }
+
+  /**
+   * Decline to settle the animal and put it back in the bag.
+   *
+   * Several of the scoring rules punish a crowd -- a third bighorn spoils a
+   * pair, a second eagle on a ridge scores nothing, one trout too many forks a
+   * run -- so being made to place an animal you do not want would be a way to
+   * lose points against your will. You may always wave it on.
+   */
+  actSkipToken(p) {
+    const s = this.state;
+    if (s.turnPhase !== 'token') return { error: 'No animal in hand.' };
+    const token = s.pending && s.pending.token;
+    if (token) {
+      this.bag.push(token);
+      this.log(p.name + ' waves ' + article(token) + ' ' + token + ' on into the wild.', 'skip', { by: p.id });
+    }
+    this.onSfx('cull');
     this.finishTurn(p);
     return { ok: true };
   }

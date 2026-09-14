@@ -31,6 +31,11 @@ export class HostSession extends Emitter {
     this.chat = [];
     this.code = null;
     this.pending = new Map();
+    // A player's seat is keyed by the id their browser remembers, not by the
+    // peer id, which changes every time they reconnect. These two maps are the
+    // bridge between the two.
+    this.playerOf = new Map();   // peerId  -> playerId
+    this.peerOf = new Map();     // playerId -> peerId
     this.timer = null;
     this.botSeq = 0;
     this.botDeadline = 0;
@@ -49,10 +54,14 @@ export class HostSession extends Emitter {
     this.net.on('connect', (peerId) => this.pending.set(peerId, Date.now()));
     this.net.on('message', (peerId, msg) => this.onMessage(peerId, msg));
     this.net.on('disconnect', (peerId) => {
-      const p = this.engine.state.players[peerId];
+      const pid = this.playerOf.get(peerId);
+      this.playerOf.delete(peerId);
+      if (pid && this.peerOf.get(pid) === peerId) this.peerOf.delete(pid);
+      const p = pid && this.engine.state.players[pid];
       if (p) {
         this.pushChat(null, p.name + ' has left the trail.', 'system');
-        this.engine.setConnected(peerId, false);
+        // Mid-game their seat is kept warm; they can come back to it.
+        this.engine.setConnected(pid, false);
       }
       this.pending.delete(peerId);
       this.emit('sfx', 'leave');
@@ -77,20 +86,34 @@ export class HostSession extends Emitter {
     const s = this.engine.state;
 
     if (msg.t === 'hello') {
-      if (s.players[peerId]) {
-        this.engine.setConnected(peerId, true);
-      } else if (s.phase !== 'lobby') {
-        this.net.send(peerId, { t: 'denied', reason: 'That game is already under way.' });
+      const deny = (reason) => {
+        this.net.send(peerId, { t: 'denied', reason });
         setTimeout(() => this.net.kick(peerId), 500);
-        return;
-      } else if (this.engine.playerCount >= 6) {
-        this.net.send(peerId, { t: 'denied', reason: 'The party is full.' });
-        setTimeout(() => this.net.kick(peerId), 500);
-        return;
+      };
+      const wanted = typeof msg.clientId === 'string' && /^[a-z0-9]{6,40}$/.test(msg.clientId)
+        ? msg.clientId : null;
+
+      // Returning to a seat you already hold, unless somebody is still sitting
+      // in it -- two tabs with the same stored id must not fight over one.
+      let id = null;
+      if (wanted && s.players[wanted] && !s.players[wanted].isBot && !s.players[wanted].connected) {
+        id = wanted;
+      }
+
+      if (id) {
+        this.engine.setConnected(id, true);
+        if (msg.name) this.engine.rename(id, msg.name);
+        this.pushChat(null, s.players[id].name + ' is back on the trail.', 'system');
       } else {
-        this.engine.addPlayer(peerId, msg.name, false);
+        if (s.phase !== 'lobby') return deny('That game is already under way.');
+        if (this.engine.playerCount >= 6) return deny('The party is full.');
+        id = wanted && !s.players[wanted] ? wanted : peerId;
+        this.engine.addPlayer(id, msg.name, false);
         this.pushChat(null, (msg.name || 'A ranger') + ' joins the party.', 'system');
       }
+
+      this.playerOf.set(peerId, id);
+      this.peerOf.set(id, peerId);
       this.pending.delete(peerId);
       this.emit('sfx', 'join');
       this.net.broadcast({ t: 'sfx', name: 'join' });
@@ -98,20 +121,22 @@ export class HostSession extends Emitter {
       return;
     }
 
+    // Everything else has to come from a seat we know about.
+    const pid = this.playerOf.get(peerId);
+    if (!pid || !s.players[pid]) return;
+
     if (msg.t === 'chat') {
-      const p = s.players[peerId];
-      if (!p) return;
-      this.pushChat(p, String(msg.text || '').slice(0, 200), 'player');
+      this.pushChat(s.players[pid], String(msg.text || '').slice(0, 200), 'player');
       this.broadcast();
       return;
     }
     if (msg.t === 'rename') {
-      this.engine.rename(peerId, msg.name);
+      this.engine.rename(pid, msg.name);
       this.broadcast();
       return;
     }
     if (msg.t === 'intent') {
-      const res = this.engine.handle(peerId, msg.action);
+      const res = this.engine.handle(pid, msg.action);
       if (res && res.error) this.net.send(peerId, { t: 'reject', reason: res.error });
       else this.broadcast();
     }
@@ -134,8 +159,12 @@ export class HostSession extends Emitter {
       const view = this.engine.viewFor(pid);
       view.chat = this.chat;
       view.code = this.code;
-      if (pid === this.localId) this.emit('view', view);
-      else this.net.send(pid, { t: 'view', view });
+      if (pid === this.localId) {
+        this.emit('view', view);
+      } else {
+        const peerId = this.peerOf.get(pid);
+        if (peerId) this.net.send(peerId, { t: 'view', view });
+      }
     }
     for (const [peerId] of this.pending) {
       const view = this.engine.viewFor(null);
@@ -234,8 +263,13 @@ export class HostSession extends Emitter {
     if (playerId === this.localId) return;
     const p = this.engine.state.players[playerId];
     if (p && p.isBot) { this.removeBot(playerId); return; }
-    this.net.send(playerId, { t: 'denied', reason: 'The host has removed you.' });
-    setTimeout(() => this.net.kick(playerId), 300);
+    const peerId = this.peerOf.get(playerId);
+    if (peerId) {
+      this.net.send(peerId, { t: 'denied', reason: 'The host has removed you.' });
+      setTimeout(() => this.net.kick(peerId), 300);
+      this.playerOf.delete(peerId);
+      this.peerOf.delete(playerId);
+    }
     this.engine.removePlayer(playerId);
     this.broadcast();
   }
@@ -244,6 +278,26 @@ export class HostSession extends Emitter {
     if (this.timer) clearInterval(this.timer);
     this.net.broadcast({ t: 'denied', reason: 'The host has closed the game.' });
     setTimeout(() => this.net.destroy(), 200);
+  }
+}
+
+/**
+ * A browser's own id, kept between visits. The host keys a seat by this rather
+ * than by the peer id, so a guest whose connection drops mid-game can come
+ * back to the board they were building instead of being told the game has
+ * already started.
+ */
+const CLIENT_ID_KEY = 'colorado.clientId';
+function clientId() {
+  try {
+    let id = localStorage.getItem(CLIENT_ID_KEY);
+    if (!id || !/^[a-z0-9]{6,40}$/.test(id)) {
+      id = 'c' + Math.random().toString(36).slice(2, 12) + Date.now().toString(36);
+      localStorage.setItem(CLIENT_ID_KEY, id);
+    }
+    return id;
+  } catch (err) {
+    return null;   // private mode: fall back to a peer-keyed seat
   }
 }
 
@@ -256,6 +310,7 @@ export class ClientSession extends Emitter {
     this.localId = null;
     this.code = null;
     this.lastView = null;
+    this.clientId = clientId();
   }
 
   async start(code) {
@@ -277,7 +332,7 @@ export class ClientSession extends Emitter {
     });
     this.net.on('close', () => this.emit('closed'));
     this.net.on('warn', (err) => console.warn('[client]', err));
-    this.net.send({ t: 'hello', name: this.name });
+    this.net.send({ t: 'hello', name: this.name, clientId: this.clientId });
   }
 
   intent(action) { this.net.send({ t: 'intent', action }); }

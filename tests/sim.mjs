@@ -380,6 +380,43 @@ console.log('\nhelp-sheet examples');
     String(shapes.size));
 }
 
+// --- waving an animal on ----------------------------------------------------
+// Cascadia lets you decline a wildlife token even when it would fit, which
+// matters because several rules punish a crowd.
+console.log('\nwaving an animal on');
+{
+  const e = new Engine();
+  e.addPlayer('a', 'A', true);
+  e.addPlayer('b', 'B', false);
+  e.startGame();
+  const id = e.currentPlayerId();
+  const p = e.state.players[id];
+
+  // Walk the display until a pair turns up whose animal has somewhere to go.
+  let found = -1;
+  for (let i = 0; i < DISPLAY_SIZE; i++) {
+    const slot = e.state.display[i];
+    if (slot.tile && slot.token && openTokenHexes(p.env, slot.token).length) { found = i; break; }
+  }
+  check('a placeable pair is on offer to test with', found >= 0);
+  const animal = e.state.display[found].token;
+  const bagBefore = e.bag.length;
+  e.handle(id, { t: 'draft', index: found });
+  const spot = openHexes(p.env).filter((h) => canPlaceTile(p.env, h.q, h.r))[0];
+  e.handle(id, { t: 'placeTile', q: spot.q, r: spot.r, rot: 0 });
+  check('the animal could have been settled', e.state.turnPhase === 'token');
+
+  const tokensBefore = Object.values(p.env).filter((t) => t.token).length;
+  const res = e.handle(id, { t: 'skipToken' });
+  check('waving it on is allowed', !res.error, res.error);
+  check('nothing was settled',
+    Object.values(p.env).filter((t) => t.token).length === tokensBefore);
+  check('the animal went back into the bag', e.bag.includes(animal) && e.bag.length >= bagBefore - 1);
+  check('and the turn passed on', e.currentPlayerId() !== id);
+  check('you cannot wave on an animal you are not holding',
+    !!e.handle(e.currentPlayerId(), { t: 'skipToken' }).error);
+}
+
 // --- taking a pair back -----------------------------------------------------
 console.log('\nputting a pair back');
 {

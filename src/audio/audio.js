@@ -1,7 +1,22 @@
-// Every sound in the game is synthesised at runtime with the Web Audio API.
-// There are no audio files at all: the wooden clacks, the birdcalls and the
-// ambient bed under it are all oscillators, filtered noise and one generated
-// impulse response standing in for the open air.
+// Every sound effect in the game is synthesised at runtime with the Web Audio
+// API: the wooden clacks, the birdcalls and the wind under them are all
+// oscillators, filtered noise and one generated impulse response standing in
+// for the open air.
+//
+// The music is the one recording in the game. It streams through a media
+// element rather than being decoded into a buffer -- ten megabytes of MP3
+// becomes a couple of hundred megabytes of float samples, which is a silly
+// price for something that only ever plays quietly in the background. If it
+// will not load, the synthesised pad it replaced takes over, so the meadow is
+// never silent.
+
+// Resolved against this module rather than the page, so it survives being
+// served from a subdirectory.
+const MUSIC_URL = new URL('../../assets/music/pastoral-serenity.mp3', import.meta.url).href;
+// The track is mastered loud and the game is not about the music, so it is
+// trimmed well down before it ever reaches the player's own volume slider.
+const MUSIC_TRIM = 0.34;
+const MUSIC_FADE = 4;      // seconds, both in and out
 
 const A4 = 440;
 const NOTE = (semitonesFromA4) => A4 * Math.pow(2, semitonesFromA4 / 12);
@@ -15,6 +30,7 @@ export class AudioEngine {
     this.musicBus = null;
     this.convolver = null;
     this.ambient = null;
+    this.track = null;
     this.settings = { master: 0.8, sfx: 0.85, music: 0.45, muted: false };
     this.noiseBuffer = null;
   }
@@ -246,12 +262,16 @@ export class AudioEngine {
     }
   }
 
-  // -- ambient bed --------------------------------------------------------
-  // There is no music file. The bed is a slow pentatonic pad with wind under
-  // it and the occasional bird, scheduled a chord at a time.
+  // -- music and ambient bed ----------------------------------------------
+  /**
+   * Wind and birds under a recorded track, fading up so it does not announce
+   * itself. Everything here runs through musicBus, so the Ambience slider
+   * still governs the lot.
+   */
   startMusic() {
     if (!this.ready || this.ambient) return;
     this.ambient = { chord: 0 };
+    this.startTrack();
 
     // Wind: filtered noise with a wandering cutoff.
     const ctx = this.ctx;
@@ -263,7 +283,7 @@ export class AudioEngine {
     windFilter.frequency.value = 420;
     windFilter.Q.value = 0.6;
     const windGain = ctx.createGain();
-    windGain.gain.value = 0.05;
+    windGain.gain.value = 0.032;
     wind.connect(windFilter);
     windFilter.connect(windGain);
     windGain.connect(this.musicBus);
@@ -282,6 +302,11 @@ export class AudioEngine {
     const CHORDS = [[-12, -5, 0, 7], [-10, -3, 2, 9], [-14, -7, -2, 5], [-12, -5, 4, 7]];
     const pad = () => {
       if (!this.ambient) return;
+      // A bird every so often, never on the beat. The chords underneath only
+      // play if the recording could not be loaded -- two pieces of music at
+      // once is worse than either.
+      this.maybeBird();
+      if (this.track) return;
       const chord = CHORDS[this.ambient.chord % CHORDS.length];
       this.ambient.chord += 1;
       for (const semi of chord) {
@@ -303,22 +328,64 @@ export class AudioEngine {
         osc.start(now);
         osc.stop(now + 10);
       }
-      // A bird every so often, never on the beat.
-      if (Math.random() < 0.55) {
-        setTimeout(() => {
-          if (!this.ambient) return;
-          const save = this.settings.sfx;
-          this.sfxBus.gain.value = save * 0.35;
-          this.chirp(900 + Math.random() * 700, 2 + Math.floor(Math.random() * 2), 0.03);
-          setTimeout(() => { if (this.ready) this.sfxBus.gain.value = this.settings.sfx; }, 400);
-        }, 1500 + Math.random() * 5000);
-      }
     };
     pad();
     this.ambient.timer = setInterval(pad, 9000);
   }
 
+  maybeBird() {
+    if (Math.random() >= 0.55) return;
+    setTimeout(() => {
+      if (!this.ambient) return;
+      const save = this.settings.sfx;
+      this.sfxBus.gain.value = save * 0.35;
+      this.chirp(900 + Math.random() * 700, 2 + Math.floor(Math.random() * 2), 0.03);
+      setTimeout(() => { if (this.ready) this.sfxBus.gain.value = this.settings.sfx; }, 400);
+    }, 1500 + Math.random() * 5000);
+  }
+
+  /** The recorded track, streamed and looped under everything else. */
+  startTrack() {
+    if (this.track || typeof Audio === 'undefined') return;
+    const media = new Audio();
+    media.src = MUSIC_URL;
+    media.loop = true;
+    media.preload = 'auto';
+    media.crossOrigin = 'anonymous';
+
+    const fail = () => {
+      // Leave this.track null so the synthesised pad keeps the bed alive.
+      media.removeEventListener('error', fail);
+      this.track = null;
+    };
+    media.addEventListener('error', fail);
+
+    let node;
+    try {
+      node = this.ctx.createMediaElementSource(media);
+    } catch (err) {
+      fail();
+      return;
+    }
+    const gain = this.ctx.createGain();
+    gain.gain.value = 0.0001;
+    node.connect(gain);
+    gain.connect(this.musicBus);
+    this.track = { media, gain };
+
+    const play = media.play();
+    if (play && play.catch) play.catch(() => { /* blocked until a gesture */ });
+    // Steal in rather than starting mid-phrase at full level.
+    gain.gain.setTargetAtTime(MUSIC_TRIM, this.ctx.currentTime, MUSIC_FADE / 3);
+  }
+
   stopMusic() {
+    if (this.track) {
+      const { media, gain } = this.track;
+      this.track = null;
+      gain.gain.setTargetAtTime(0.0001, this.ctx.currentTime, MUSIC_FADE / 4);
+      setTimeout(() => { try { media.pause(); } catch (e) { /* gone */ } }, MUSIC_FADE * 1000);
+    }
     if (!this.ambient) return;
     clearInterval(this.ambient.timer);
     try { this.ambient.wind.source.stop(); } catch (e) { /* already stopped */ }

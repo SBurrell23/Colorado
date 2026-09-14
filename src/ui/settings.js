@@ -118,9 +118,9 @@ export function openSettingsModal(onChange) {
 
   body.appendChild(el('h3', { text: 'Sound' }));
   body.appendChild(row('Master volume', null, slider('master', 0, 1, 0.01, (v) => Math.round(v * 100) + '%', apply)));
-  body.appendChild(row('Effects', 'Synthesised live — no sound files.',
+  body.appendChild(row('Effects', 'Every one synthesised live.',
     slider('sfx', 0, 1, 0.01, (v) => Math.round(v * 100) + '%', apply)));
-  body.appendChild(row('Ambience', 'Wind, birds and a slow pad, also generated.',
+  body.appendChild(row('Ambience', 'The background music, with wind and birds under it.',
     slider('music', 0, 1, 0.01, (v) => Math.round(v * 100) + '%', apply)));
   body.appendChild(row('Mute everything', null, toggle('muted', apply)));
 

@@ -1,7 +1,9 @@
 // PeerJS transport. The host owns the truth; clients are thin terminals that
 // send intents and render whatever view they are handed.
 
-const ID_PREFIX = 'bridge-to-eternity-';
+// Namespaced to this game: the public PeerJS broker is shared with the whole
+// world, and a four-character code is only unique inside its own prefix.
+const ID_PREFIX = 'colorado-game-';
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no look-alikes
 
 const PEER_OPTIONS = {
