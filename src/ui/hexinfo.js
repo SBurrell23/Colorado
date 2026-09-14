@@ -84,7 +84,7 @@ function animalStanding(env, q, r, animal) {
     case 'eagle': {
       const near = sameNeighbourCount(env, q, r, 'eagle');
       return near === 0
-        ? 'Alone on its ridge — this one scores.'
+        ? 'No other eagle beside it — this one scores, whatever else is around it.'
         : 'Sharing a ridge with ' + near + ' other eagle' + (near === 1 ? '' : 's') + ', so it scores nothing.';
     }
     case 'coyote': {

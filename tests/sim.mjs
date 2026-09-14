@@ -347,6 +347,14 @@ console.log('\nhelp-sheet examples');
     const [q, r] = k.split(',').map(Number);
     check('the crossed eagle at ' + k + ' is not', sameNeighbourCount(eagleEnv, q, r, 'eagle') > 0);
   }
+  // An eagle minds other eagles and nothing else, so at least one of the ones
+  // that scores has to be shown with company -- otherwise the picture teaches
+  // "eagles want an empty hill", which is not the rule.
+  check('a scoring eagle is shown with other animals beside it',
+    marked(eagle.cells, '✓').some((k) => {
+      const [q, r] = k.split(',').map(Number);
+      return [...neighbourAnimals(eagleEnv, q, r)].some((a) => a !== 'eagle');
+    }));
 
   const coyote = ANIMAL_EXAMPLES.coyote;
   const coyoteEnv = exampleEnv(coyote.cells);

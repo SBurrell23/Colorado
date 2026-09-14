@@ -56,13 +56,16 @@ export const ANIMAL_EXAMPLES = {
     ],
   },
 
+  // Both scoring eagles have company: an eagle minds other eagles and nothing
+  // else, and "alone" reads as "on an empty hill" unless the picture says
+  // otherwise.
   eagle: {
-    caption: 'Two eagles alone score. The pair beside each other does not.',
+    caption: 'Other animals beside an eagle are fine — only another eagle spoils it.',
     cells: [
       solid(0, 0, 'marsh', 'eagle', '✓'),
       solid(0, 2, 'peak', 'eagle', '✓'),
-      filler(1, 0, 2),
-      filler(1, 1, 4),
+      solid(1, 0, 'prairie', 'bighorn'),
+      solid(1, 1, 'aspen', 'elk'),
       solid(2, 0, 'aspen', 'eagle', '✗'),
       solid(2, 1, 'marsh', 'eagle'),
     ],
