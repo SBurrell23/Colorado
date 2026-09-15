@@ -360,9 +360,11 @@ console.log('\nhelp-sheet examples');
   const coyoteEnv = exampleEnv(coyote.cells);
   const [ck] = marked(coyote.cells, '✓');
   const [cq, cr] = ck.split(',').map(Number);
-  const kinds = [...neighbourAnimals(coyoteEnv, cq, cr)].filter((a) => a !== 'coyote');
-  check('the coyote example really has four different neighbours', kinds.length === 4, kinds.join(','));
-  check('and scores four', scoreCoyote(coyoteEnv) === 4, String(scoreCoyote(coyoteEnv)));
+  const kinds = [...neighbourAnimals(coyoteEnv, cq, cr)];
+  check('the coyote example has five different animals around it', kinds.length === 5, kinds.join(','));
+  check('one of which is another coyote', kinds.includes('coyote'));
+  // Five for the marked one, and the neighbour coyote scores its own two.
+  check('and the pair of them score seven', scoreCoyote(coyoteEnv) === 7, String(scoreCoyote(coyoteEnv)));
 
   // Each habitat teaches a different lesson about corridors, and each one
   // states the run lengths the rules should find in it.
@@ -467,6 +469,45 @@ console.log('\nwaving an animal on');
     !!e.handle(e.currentPlayerId(), { t: 'skipToken' }).error);
 }
 
+// --- changing your mind about a pair ----------------------------------------
+// Drafting again before the tile is laid swaps your choice rather than being
+// refused: the display keeps showing all four, so clicking another is the
+// obvious way to change your mind.
+console.log('\nswapping a pair');
+{
+  const e = new Engine();
+  e.addPlayer('a', 'A', true);
+  e.addPlayer('b', 'B', false);
+  e.startGame();
+  const id = e.currentPlayerId();
+  const before = e.state.display.map((d) => (d.tile ? d.tile.id : null));
+
+  e.handle(id, { t: 'draft', index: 0 });
+  const res = e.handle(id, { t: 'draft', index: 2 });
+  check('drafting again before laying is allowed', !res.error, res.error);
+  check('the first pair went back where it was', e.state.display[0].tile.id === before[0]);
+  check('and the new one is in hand', e.state.pending.tile.id === before[2]);
+  check('with the slot it came from noted', e.state.pending.tileIdx === 2);
+  check('exactly one slot is empty', e.state.display.filter((d) => !d.tile).length === 1);
+
+  // A mismatched pair costs a token; swapping away from it gives it back.
+  const p = e.state.players[id];
+  p.nature = 1;
+  e.state.natureLeft -= 1;
+  e.handle(id, { t: 'draft', tileIndex: 1, tokenIndex: 3 });
+  check('the mismatched pair cost a token', p.nature === 0);
+  e.handle(id, { t: 'draft', index: 1 });
+  check('swapping off it refunds the token', p.nature === 1, String(p.nature));
+
+  // Once the tile is down there is no changing your mind.
+  const spot = openHexes(p.env).filter((h) => canPlaceTile(p.env, h.q, h.r))[0];
+  e.handle(id, { t: 'placeTile', q: spot.q, r: spot.r, rot: 0 });
+  if (e.state.turnPhase === 'token') {
+    check('drafting once the tile is laid is refused',
+      !!e.handle(id, { t: 'draft', index: 0 }).error);
+  }
+}
+
 // --- taking a pair back -----------------------------------------------------
 console.log('\nputting a pair back');
 {
@@ -511,7 +552,6 @@ console.log('\nillegal moves');
   check('unknown moves are refused', !!e.handle(cur, { t: 'wander' }).error);
 
   e.handle(cur, { t: 'draft', index: 0 });
-  check('drafting twice is refused', !!e.handle(cur, { t: 'draft', index: 1 }).error);
   check('a floating tile is refused', !!e.handle(cur, { t: 'placeTile', q: 9, r: 9, rot: 0 }).error);
   check('a token before its tile is refused', !!e.handle(cur, { t: 'placeToken', q: 0, r: 0 }).error);
 }

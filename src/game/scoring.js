@@ -29,7 +29,7 @@ export const RULE_TEXT = {
   eagle: 'Eagles will not share a ridge. Score only the eagles with no other eagle '
     + 'beside them.',
   coyote: 'Coyotes go where the going is good. Each coyote scores one for every '
-    + 'different animal on the six hexes around it.',
+    + 'different animal on the six hexes around it (another coyote counts).',
 };
 
 export const RULE_TABLE = {

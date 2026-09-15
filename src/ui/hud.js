@@ -239,7 +239,8 @@ export class Hud {
     }
 
     if (v.turnPhase === 'tile') {
-      prompt.innerHTML = 'Lay the tile on your board — it must touch what you already have.';
+      prompt.innerHTML = 'Lay the tile on your board — it must touch what you already have. '
+        + '<span class="aside">Or click another pair to take that one instead.</span>';
       buttons.appendChild(el('button', {
         class: 'ghost-btn', onclick: () => this.h.onRotate(),
       }, ['Turn It', el('kbd', { text: 'R' })]));

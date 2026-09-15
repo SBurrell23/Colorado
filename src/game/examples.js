@@ -71,16 +71,18 @@ export const ANIMAL_EXAMPLES = {
     ],
   },
 
+  // One of the neighbours is another coyote, because it counts: the rule is
+  // "different animals adjacent", and a coyote is an animal.
   coyote: {
-    caption: 'Four different neighbours: four points for this coyote.',
+    caption: 'Five different animals around it, five points — another coyote counts too.',
     cells: [
       solid(0, 0, 'prairie', 'coyote', '✓'),
       solid(-1, 0, 'peak', 'bighorn'),
       solid(-1, 1, 'aspen', 'elk'),
       solid(0, 1, 'river', 'trout'),
       solid(1, 0, 'marsh', 'eagle'),
+      solid(0, -1, 'prairie', 'coyote'),
       filler(1, -1, 2),
-      filler(0, -1, 1),
     ],
   },
 };

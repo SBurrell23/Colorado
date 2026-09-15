@@ -358,6 +358,18 @@ function setMode(mode) {
 function onDraftClick(hit) {
   if (!myTurn()) { toast('Wait for your turn.', 'bad', 1500); audio.play('error'); return; }
   const v = app.view;
+
+  // Holding a pair and clicking a different one: take that instead. Nothing has
+  // been laid, so the engine simply puts the first pair back.
+  if (v.turnPhase === 'tile') {
+    if (!v.pending || hit.slot === v.pending.tileIdx) return;
+    if (!v.display[hit.slot] || !v.display[hit.slot].tile) return;
+    app.board.setGhost(null);
+    app.hoverHex = null;
+    send({ t: 'draft', index: hit.slot });
+    return;
+  }
+
   if (v.turnPhase !== 'draft') return;
   const slot = v.display[hit.slot];
   if (!slot) return;
@@ -625,15 +637,28 @@ function onView(view) {
 
   app.board.sync(view);
 
-  // The strip shows the four on offer, or the pair somebody is holding --
-  // theirs as well as yours. Watching a ranger think is more interesting when
-  // you can see the tile they are turning over.
-  if (view.turnPhase !== 'draft' && view.pending) {
-    app.draft.setContent('hand', [{ tile: view.pending.tile, token: view.pending.token }]);
-  } else {
-    app.draft.setContent('display', view.display);
+  // All four stay on offer at all times -- the three nobody took are still
+  // there for whoever is next, and hiding them made it look as though they had
+  // been discarded. A taken pair sits in the slots it came from, lifted and
+  // glowing in the colour of whoever is holding it.
+  const slots = view.display.map((d) => ({ tile: d.tile, token: d.token }));
+  const held = { tile: null, token: null, colour: '#ffffff', phase: view.turnPhase };
+  if (view.pending) {
+    const cur = view.players.find((p) => p.id === view.currentPlayerId);
+    held.colour = (cur && cur.colour) || '#ffffff';
+    if (slots[view.pending.tileIdx]) {
+      slots[view.pending.tileIdx].tile = view.pending.tile;
+      held.tile = view.pending.tileIdx;
+    }
+    if (view.pending.token && slots[view.pending.tokenIdx]) {
+      slots[view.pending.tokenIdx].token = view.pending.token;
+      held.token = view.pending.tokenIdx;
+    }
   }
-  app.draft.enabled = myTurn() && view.turnPhase === 'draft';
+  app.draft.setContent('display', slots);
+  app.draft.setHeld(held);
+  // Clickable while holding too, so another tile can be taken instead.
+  app.draft.enabled = myTurn() && (view.turnPhase === 'draft' || view.turnPhase === 'tile');
   document.documentElement.style.setProperty('--draft-h', Math.round(app.draft.stripHeight) + 'px');
   syncFraming();
 

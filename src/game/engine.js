@@ -310,6 +310,14 @@ export class Engine {
 
   actDraft(p, msg) {
     const s = this.state;
+    // Changing your mind before anything has been laid: put the pair you are
+    // holding back on offer and take the new one instead. Nothing has happened
+    // to the board yet, so this costs nothing -- including any nature token
+    // spent on a mismatched pair, which actUndraft refunds.
+    if (s.turnPhase === 'tile' && s.pending) {
+      const back = this.actUndraft(p);
+      if (back.error) return back;
+    }
     if (s.turnPhase !== 'draft') return { error: 'Already drafted.' };
 
     let tileIdx = msg.tileIndex;
@@ -505,8 +513,15 @@ export class Engine {
       currentPlayerId: s.phase === 'playing' ? this.currentPlayerId() : null,
       turnPhase: s.turnPhase,
       turnEndsAt: s.turnEndsAt,
+      // The slots it came out of travel with it, so the display can show the
+      // pair still sitting where it was, lifted, rather than blanking it.
       pending: s.pending
-        ? { tile: s.pending.tile, token: s.pending.token }
+        ? {
+          tile: s.pending.tile,
+          token: s.pending.token,
+          tileIdx: s.pending.tileIdx,
+          tokenIdx: s.pending.tokenIdx,
+        }
         : null,
       display: s.display.map((d) => ({ tile: d.tile, token: d.token })),
       deckCount: this.deck.length,

@@ -88,7 +88,9 @@ function animalStanding(env, q, r, animal) {
         : 'Sharing a ridge with ' + near + ' other eagle' + (near === 1 ? '' : 's') + ', so it scores nothing.';
     }
     case 'coyote': {
-      const kinds = Array.from(neighbourAnimals(env, q, r)).filter((a) => a !== 'coyote');
+      // Every kind counts, another coyote included: the scorer takes the whole
+      // set, and this line has to say the same thing.
+      const kinds = Array.from(neighbourAnimals(env, q, r));
       return kinds.length
         ? 'Worth ' + kinds.length + ' — beside ' + listOf(kinds.map((a) => ANIMAL_INFO[a].short.toLowerCase())) + '.'
         : 'Nothing settled around it yet, so nothing to score.';

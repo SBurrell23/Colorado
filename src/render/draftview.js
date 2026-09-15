@@ -27,6 +27,25 @@ function tokenTex(animal) {
   return t;
 }
 
+let glowTex = null;
+/** A soft round bloom, tinted per player and laid behind a held pair. */
+function glowTexture() {
+  if (glowTex) return glowTex;
+  const S = 256;
+  const c = document.createElement('canvas');
+  c.width = S;
+  c.height = S;
+  const ctx = c.getContext('2d');
+  const g = ctx.createRadialGradient(S / 2, S / 2, S * 0.16, S / 2, S / 2, S * 0.5);
+  g.addColorStop(0, 'rgba(255,255,255,0.95)');
+  g.addColorStop(0.45, 'rgba(255,255,255,0.4)');
+  g.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, S, S);
+  glowTex = new THREE.CanvasTexture(c);
+  return glowTex;
+}
+
 function plane(tex, tint) {
   return new THREE.Mesh(
     new THREE.PlaneGeometry(1, 1),
@@ -51,6 +70,8 @@ export class DraftView {
     this.mode = 'display';
     this.hover = null;          // { slot, part }
     this.selected = { tile: null, token: null };
+    // Which slots hold the pair somebody has taken but not yet laid, and whose.
+    this.held = { tile: null, token: null, colour: '#ffffff', phase: null };
     this.culling = new Set();
     this.enabled = true;
     this.time = 0;
@@ -71,8 +92,7 @@ export class DraftView {
   }
 
   get metrics() {
-    const big = this.mode === 'hand';
-    const tile = Math.max(68, Math.min(this.width * (big ? 0.12 : 0.105), this.height * 0.2, big ? 168 : 140));
+    const tile = Math.max(68, Math.min(this.width * 0.105, this.height * 0.2, 140));
     return { tile, token: tile * 0.55, gap: tile * 0.11 };
   }
 
@@ -83,7 +103,7 @@ export class DraftView {
   }
 
   /**
-   * @param mode   'display' for the four on offer, 'hand' for what you hold
+   * @param mode   kept for the signature key; the strip is always the display
    * @param slots  [{ tile, token }]
    */
   setContent(mode, slots) {
@@ -105,6 +125,16 @@ export class DraftView {
 
     slots.forEach((slot, i) => {
       const group = new THREE.Group();
+      const glow = new THREE.Mesh(
+        new THREE.PlaneGeometry(1, 1),
+        new THREE.MeshBasicMaterial({
+          map: glowTexture(), transparent: true, depthWrite: false,
+          blending: THREE.AdditiveBlending, toneMapped: false, opacity: 0,
+        }),
+      );
+      glow.position.z = -1;
+      glow.visible = false;
+      group.add(glow);
       let tileMesh = null;
       let tokenMesh = null;
       if (slot.tile) {
@@ -119,7 +149,7 @@ export class DraftView {
       }
       this.root.add(group);
       this.slots.push({
-        group, tileMesh, tokenMesh, slot: i,
+        group, tileMesh, tokenMesh, glow, slot: i,
         cur: { x: 0, y: -this.height, lift: 0, scale: 1 },
       });
     });
@@ -149,6 +179,14 @@ export class DraftView {
 
   setCulling(set) {
     this.culling = set || new Set();
+  }
+
+  /**
+   * @param held { tile, token, colour, phase } -- the slots a taken pair came
+   *             from, so it can sit where it was rather than being blanked.
+   */
+  setHeld(held) {
+    this.held = held || { tile: null, token: null, colour: '#ffffff', phase: null };
   }
 
   hitTest(clientX, clientY, rect) {
@@ -183,20 +221,40 @@ export class DraftView {
       const chosenTile = this.selected.tile === s.slot;
       const chosenToken = this.selected.token === s.slot;
       const culling = this.culling.has(s.slot);
-      const lift = chosenTile || chosenToken || culling ? 26 : hovered ? 16 : 0;
-      const scale = chosenTile || chosenToken ? 1.1 : hovered ? 1.06 : 1;
+      const heldTile = this.held.tile === s.slot;
+      const heldToken = this.held.token === s.slot;
+      const held = heldTile || heldToken;
+      // A held pair rides higher than anything else and breathes, so it is
+      // plain which one has been taken without the other three going away.
+      const float = held ? 8 + Math.sin(this.time * 2.1) * 4 : 0;
+      const lift = (held ? 34 : chosenTile || chosenToken || culling ? 26 : hovered ? 16 : 0) + float;
+      const scale = held ? 1.14 : chosenTile || chosenToken ? 1.1 : hovered ? 1.06 : 1;
 
       s.cur.x += (s.baseX - s.cur.x) * lerp;
       s.cur.y += (s.baseY + lift - s.cur.y) * lerp;
       s.cur.scale += (scale - s.cur.scale) * lerp;
-      s.group.position.set(s.cur.x, s.cur.y, hovered ? 20 : 0);
+      s.group.position.set(s.cur.x, s.cur.y, held ? 30 : hovered ? 20 : 0);
 
       const tileSize = m.tile * s.cur.scale;
+      if (s.glow) {
+        s.glow.visible = held;
+        if (held) {
+          const pulse = 0.62 + 0.28 * (0.5 + 0.5 * Math.sin(this.time * 2.6));
+          s.glow.material.color.set(this.held.colour || '#ffffff');
+          s.glow.material.opacity = pulse;
+          const g = tileSize * 2.05;
+          s.glow.scale.set(g, g, 1);
+        }
+      }
       if (s.tileMesh) {
+        // Once the tile is down, dim it where it lies: the animal is still in
+        // hand, the tile is not.
+        const laid = heldTile && this.held.phase === 'token';
         s.tileMesh.scale.set(tileSize, tileSize, 1);
         s.tileMesh.position.set(0, 0, 1);
         s.tileMesh.material.color.setHex(chosenTile ? 0xfff2d2 : 0xffffff);
-        s.tileMesh.material.opacity = this.selected.tile !== null && !chosenTile ? 0.62 : 1;
+        s.tileMesh.material.opacity = laid ? 0.42
+          : this.selected.tile !== null && !chosenTile ? 0.62 : 1;
       }
       if (s.tokenMesh) {
         const ts = m.token * s.cur.scale;

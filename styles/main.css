@@ -314,6 +314,7 @@ kbd {
   padding: 0.46em 1.05em; font-size: 0.96rem; box-shadow: var(--shadow);
 }
 .prompt strong { color: var(--gold-1); }
+.prompt .aside { color: var(--ink-dim); font-size: 0.9em; }
 .action-buttons { display: flex; gap: 9px; flex-wrap: wrap; justify-content: center; }
 
 /* Marks the two halves of the token beat as a choice between them. */
