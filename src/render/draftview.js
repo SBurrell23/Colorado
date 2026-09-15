@@ -27,8 +27,15 @@ function tokenTex(animal) {
   return t;
 }
 
+// How far past the tile the halo reaches, as a multiple of the tile's width.
+const GLOW_SCALE = 1.26;
+
 let glowTex = null;
-/** A soft round bloom, tinted per player and laid behind a held pair. */
+/**
+ * A halo the shape of the tile it sits behind, tinted per player. A round
+ * gradient was the obvious thing and the wrong one: it bloomed well past the
+ * corners and read as fog rather than as an edge.
+ */
 function glowTexture() {
   if (glowTex) return glowTex;
   const S = 256;
@@ -36,14 +43,52 @@ function glowTexture() {
   c.width = S;
   c.height = S;
   const ctx = c.getContext('2d');
-  const g = ctx.createRadialGradient(S / 2, S / 2, S * 0.16, S / 2, S / 2, S * 0.5);
-  g.addColorStop(0, 'rgba(255,255,255,0.95)');
-  g.addColorStop(0.45, 'rgba(255,255,255,0.4)');
-  g.addColorStop(1, 'rgba(255,255,255,0)');
-  ctx.fillStyle = g;
-  ctx.fillRect(0, 0, S, S);
+  // Sized so the hexagon lands exactly on the tile's own edge once the plane
+  // is scaled up; the blur is all that shows beyond it.
+  const r = (S / 2) / GLOW_SCALE;
+  ctx.filter = 'blur(' + Math.round(S * 0.035) + 'px)';
+  ctx.fillStyle = '#ffffff';
+  ctx.beginPath();
+  for (let i = 0; i < 6; i++) {
+    const a = (Math.PI / 3) * i + Math.PI / 2;   // a corner straight up, as the tiles are
+    const x = S / 2 + Math.cos(a) * r;
+    const y = S / 2 - Math.sin(a) * r;
+    if (i) ctx.lineTo(x, y); else ctx.moveTo(x, y);
+  }
+  ctx.closePath();
+  ctx.fill();
   glowTex = new THREE.CanvasTexture(c);
   return glowTex;
+}
+
+let glowRoundTex = null;
+/** The same halo for the animal token, which is a disc rather than a hex. */
+function glowRoundTexture() {
+  if (glowRoundTex) return glowRoundTex;
+  const S = 192;
+  const c = document.createElement('canvas');
+  c.width = S;
+  c.height = S;
+  const ctx = c.getContext('2d');
+  ctx.filter = 'blur(' + Math.round(S * 0.045) + 'px)';
+  ctx.fillStyle = '#ffffff';
+  ctx.beginPath();
+  ctx.arc(S / 2, S / 2, (S / 2) / GLOW_SCALE, 0, Math.PI * 2);
+  ctx.fill();
+  glowRoundTex = new THREE.CanvasTexture(c);
+  return glowRoundTex;
+}
+
+function glowPlane(tex) {
+  const mesh = new THREE.Mesh(
+    new THREE.PlaneGeometry(1, 1),
+    new THREE.MeshBasicMaterial({
+      map: tex, transparent: true, depthWrite: false,
+      blending: THREE.AdditiveBlending, toneMapped: false, opacity: 0,
+    }),
+  );
+  mesh.visible = false;
+  return mesh;
 }
 
 function plane(tex, tint) {
@@ -125,16 +170,12 @@ export class DraftView {
 
     slots.forEach((slot, i) => {
       const group = new THREE.Group();
-      const glow = new THREE.Mesh(
-        new THREE.PlaneGeometry(1, 1),
-        new THREE.MeshBasicMaterial({
-          map: glowTexture(), transparent: true, depthWrite: false,
-          blending: THREE.AdditiveBlending, toneMapped: false, opacity: 0,
-        }),
-      );
+      const glow = glowPlane(glowTexture());
       glow.position.z = -1;
-      glow.visible = false;
       group.add(glow);
+      const glowToken = glowPlane(glowRoundTexture());
+      glowToken.position.z = -1;
+      group.add(glowToken);
       let tileMesh = null;
       let tokenMesh = null;
       if (slot.tile) {
@@ -149,7 +190,7 @@ export class DraftView {
       }
       this.root.add(group);
       this.slots.push({
-        group, tileMesh, tokenMesh, glow, slot: i,
+        group, tileMesh, tokenMesh, glow, glowToken, slot: i,
         cur: { x: 0, y: -this.height, lift: 0, scale: 1 },
       });
     });
@@ -236,13 +277,13 @@ export class DraftView {
       s.group.position.set(s.cur.x, s.cur.y, held ? 30 : hovered ? 20 : 0);
 
       const tileSize = m.tile * s.cur.scale;
+      const pulse = 0.72 + 0.24 * (0.5 + 0.5 * Math.sin(this.time * 2.6));
       if (s.glow) {
-        s.glow.visible = held;
-        if (held) {
-          const pulse = 0.62 + 0.28 * (0.5 + 0.5 * Math.sin(this.time * 2.6));
+        s.glow.visible = heldTile && !!s.tileMesh;
+        if (s.glow.visible) {
           s.glow.material.color.set(this.held.colour || '#ffffff');
           s.glow.material.opacity = pulse;
-          const g = tileSize * 2.05;
+          const g = tileSize * GLOW_SCALE;
           s.glow.scale.set(g, g, 1);
         }
       }
@@ -264,6 +305,21 @@ export class DraftView {
           culling ? 0xff9a8a : chosenToken ? 0xe6ffd8 : 0xffffff,
         );
         s.tokenMesh.material.opacity = this.selected.token !== null && !chosenToken ? 0.62 : 1;
+
+        // The halo rides under the animal as well, so a held pair reads as one
+        // thing rather than a lit tile with an unlit coin below it.
+        if (s.glowToken) {
+          s.glowToken.visible = heldToken;
+          if (heldToken) {
+            s.glowToken.material.color.set(this.held.colour || '#ffffff');
+            s.glowToken.material.opacity = pulse;
+            const gt = ts * GLOW_SCALE * 1.12;
+            s.glowToken.scale.set(gt, gt, 1);
+            s.glowToken.position.set(0, s.tokenMesh.position.y, -1);
+          }
+        }
+      } else if (s.glowToken) {
+        s.glowToken.visible = false;
       }
     }
   }
