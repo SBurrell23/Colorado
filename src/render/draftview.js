@@ -205,12 +205,14 @@ export class DraftView {
         group.add(tokenMesh);
       }
       this.root.add(group);
-      // A genuinely new pair rises into place; one that merely changed hands
-      // stays where it was.
-      const from = prev ? prev.cur : { x: 0, y: -this.height, lift: 0, scale: 1 };
+      // Only a slot whose contents actually changed gets rebuilt, and that only
+      // happens when a fresh pair comes off the stack -- so it rises into place
+      // from below while its neighbours sit still. Taking a pair does not land
+      // here: the held one is shown in its own slot, so nothing about it
+      // changed.
       this.slots.push({
         group, tileMesh, tokenMesh, glow, glowToken, slot: i, sig: sigOf(slot),
-        cur: { x: from.x, y: from.y, lift: from.lift, scale: from.scale },
+        cur: { x: prev ? prev.cur.x : 0, y: -this.height, lift: 0, scale: 1 },
       });
     });
 
