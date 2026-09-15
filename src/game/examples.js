@@ -56,13 +56,14 @@ export const ANIMAL_EXAMPLES = {
     ],
   },
 
-  // Both scoring eagles have company: an eagle minds other eagles and nothing
-  // else, and "alone" reads as "on an empty hill" unless the picture says
-  // otherwise.
+  // Both scoring eagles have company, and the trout between them gives each of
+  // them a second neighbour. One neighbour could be read as a limit -- players
+  // have read it that way -- so the picture shows two.
   eagle: {
-    caption: 'Other animals beside an eagle are fine — only another eagle spoils it.',
+    caption: 'An eagle may border as many other animals as it likes. Only another eagle spoils it.',
     cells: [
       solid(0, 0, 'marsh', 'eagle', '✓'),
+      solid(0, 1, 'river', 'trout'),
       solid(0, 2, 'peak', 'eagle', '✓'),
       solid(1, 0, 'prairie', 'bighorn'),
       solid(1, 1, 'aspen', 'elk'),
