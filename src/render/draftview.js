@@ -27,8 +27,13 @@ function tokenTex(animal) {
   return t;
 }
 
-// How far past the tile the halo reaches, as a multiple of the tile's width.
-const GLOW_SCALE = 1.26;
+// How far past each shape its halo reaches, as a multiple of that shape's own
+// width. The hexagon needs more: its halo is spread around a much longer
+// perimeter than the token's, so at equal settings it reads as the fainter of
+// the two even though it is the bigger piece.
+const GLOW_HEX = 1.4;
+const GLOW_ROUND = 1.3;
+const GLOW_HEX_BOOST = 1.5;
 
 let glowTex = null;
 /**
@@ -45,18 +50,24 @@ function glowTexture() {
   const ctx = c.getContext('2d');
   // Sized so the hexagon lands exactly on the tile's own edge once the plane
   // is scaled up; the blur is all that shows beyond it.
-  const r = (S / 2) / GLOW_SCALE;
-  ctx.filter = 'blur(' + Math.round(S * 0.035) + 'px)';
+  const r = (S / 2) / GLOW_HEX;
+  ctx.filter = 'blur(' + Math.round(S * 0.032) + 'px)';
   ctx.fillStyle = '#ffffff';
-  ctx.beginPath();
-  for (let i = 0; i < 6; i++) {
-    const a = (Math.PI / 3) * i + Math.PI / 2;   // a corner straight up, as the tiles are
-    const x = S / 2 + Math.cos(a) * r;
-    const y = S / 2 - Math.sin(a) * r;
-    if (i) ctx.lineTo(x, y); else ctx.moveTo(x, y);
-  }
-  ctx.closePath();
-  ctx.fill();
+  const hex = () => {
+    ctx.beginPath();
+    for (let i = 0; i < 6; i++) {
+      const a = (Math.PI / 3) * i + Math.PI / 2;   // a corner straight up, as the tiles are
+      const x = S / 2 + Math.cos(a) * r;
+      const y = S / 2 - Math.sin(a) * r;
+      if (i) ctx.lineTo(x, y); else ctx.moveTo(x, y);
+    }
+    ctx.closePath();
+    ctx.fill();
+  };
+  // Twice over, so the band just outside the tile edge saturates instead of
+  // trailing away into the blur.
+  hex();
+  hex();
   glowTex = new THREE.CanvasTexture(c);
   return glowTex;
 }
@@ -73,7 +84,7 @@ function glowRoundTexture() {
   ctx.filter = 'blur(' + Math.round(S * 0.045) + 'px)';
   ctx.fillStyle = '#ffffff';
   ctx.beginPath();
-  ctx.arc(S / 2, S / 2, (S / 2) / GLOW_SCALE, 0, Math.PI * 2);
+  ctx.arc(S / 2, S / 2, (S / 2) / GLOW_ROUND, 0, Math.PI * 2);
   ctx.fill();
   glowRoundTex = new THREE.CanvasTexture(c);
   return glowRoundTex;
@@ -152,23 +163,28 @@ export class DraftView {
    * @param slots  [{ tile, token }]
    */
   setContent(mode, slots) {
-    const sig = mode + '|' + slots.map((s) => (s.tile
-      ? s.tile.habitats.join('') + s.tile.wildlife.join('')
-      : '-') + ':' + (s.token || '-')).join('|');
+    const sigOf = (s) => (s.tile ? s.tile.habitats.join('') + s.tile.wildlife.join('') : '-')
+      + ':' + (s.token || '-');
+    const sig = mode + '|' + slots.map(sigOf).join('|');
     if (sig === this.signature) return;
     this.signature = sig;
     this.mode = mode;
 
-    for (const s of this.slots) {
-      this.root.remove(s.group);
-      s.group.traverse((o) => {
-        if (o.geometry) o.geometry.dispose();
-        if (o.material) o.material.dispose();
-      });
-    }
+    // Reconcile slot by slot. Rebuilding the lot made every pair fly up from
+    // the bottom of the screen each time one was replaced, which looked as
+    // though the whole display had been redealt -- when in fact three of them
+    // never moved and only the one just taken was refilled from the stack.
+    const old = this.slots;
+    const keep = new Set();
     this.slots = [];
 
     slots.forEach((slot, i) => {
+      const prev = old[i];
+      if (prev && prev.sig === sigOf(slot)) {
+        keep.add(prev);
+        this.slots.push(prev);
+        return;
+      }
       const group = new THREE.Group();
       const glow = glowPlane(glowTexture());
       glow.position.z = -1;
@@ -189,11 +205,23 @@ export class DraftView {
         group.add(tokenMesh);
       }
       this.root.add(group);
+      // A genuinely new pair rises into place; one that merely changed hands
+      // stays where it was.
+      const from = prev ? prev.cur : { x: 0, y: -this.height, lift: 0, scale: 1 };
       this.slots.push({
-        group, tileMesh, tokenMesh, glow, glowToken, slot: i,
-        cur: { x: 0, y: -this.height, lift: 0, scale: 1 },
+        group, tileMesh, tokenMesh, glow, glowToken, slot: i, sig: sigOf(slot),
+        cur: { x: from.x, y: from.y, lift: from.lift, scale: from.scale },
       });
     });
+
+    for (const s of old) {
+      if (keep.has(s)) continue;
+      this.root.remove(s.group);
+      s.group.traverse((o) => {
+        if (o.geometry) o.geometry.dispose();
+        if (o.material) o.material.dispose();
+      });
+    }
     this.layout();
   }
 
@@ -282,8 +310,8 @@ export class DraftView {
         s.glow.visible = heldTile && !!s.tileMesh;
         if (s.glow.visible) {
           s.glow.material.color.set(this.held.colour || '#ffffff');
-          s.glow.material.opacity = pulse;
-          const g = tileSize * GLOW_SCALE;
+          s.glow.material.opacity = Math.min(1, pulse * GLOW_HEX_BOOST);
+          const g = tileSize * GLOW_HEX;
           s.glow.scale.set(g, g, 1);
         }
       }
@@ -313,7 +341,7 @@ export class DraftView {
           if (heldToken) {
             s.glowToken.material.color.set(this.held.colour || '#ffffff');
             s.glowToken.material.opacity = pulse;
-            const gt = ts * GLOW_SCALE * 1.12;
+            const gt = ts * GLOW_ROUND;
             s.glowToken.scale.set(gt, gt, 1);
             s.glowToken.position.set(0, s.tokenMesh.position.y, -1);
           }
