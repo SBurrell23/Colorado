@@ -472,6 +472,62 @@ console.log('\nwaving an animal on');
     !!e.handle(e.currentPlayerId(), { t: 'skipToken' }).error);
 }
 
+// --- a turn that cannot play itself -----------------------------------------
+// Whatever state a turn is wedged in, playing it out has to consume exactly
+// one turn and hand over. The old version attempted each beat and trusted it:
+// a beat that quietly failed left the turn where it was, and with the timer
+// off -- the default -- nothing was ever going to come along and notice.
+console.log('\nplaying a stuck turn out');
+{
+  const wedged = [];
+  // From each of the three beats, and from a board with nowhere legal to lay.
+  for (const beat of ['draft', 'tile', 'token']) {
+    const e = new Engine();
+    e.addPlayer('a', 'A', true);
+    e.addPlayer('b', 'B', false);
+    e.startGame();
+    const id = e.currentPlayerId();
+    const p = e.state.players[id];
+    if (beat !== 'draft') {
+      e.handle(id, { t: 'draft', index: 0 });
+      if (beat === 'token') {
+        const spot = openHexes(p.env).filter((h) => canPlaceTile(p.env, h.q, h.r))[0];
+        e.handle(id, { t: 'placeTile', q: spot.q, r: spot.r, rot: 0 });
+      }
+    }
+    const before = p.turnsTaken;
+    const moved = e.forceTurn();
+    wedged.push({
+      beat,
+      ok: !moved.error,
+      tookOne: p.turnsTaken === before + 1 || e.state.phase === 'gameEnd',
+      handedOver: e.currentPlayerId() !== id || e.state.phase === 'gameEnd',
+      clean: !e.state.pending,
+    });
+  }
+  check('a stuck turn can be played out from any beat', wedged.every((w) => w.ok));
+  check('and consumes exactly one turn each time', wedged.every((w) => w.tookOne),
+    JSON.stringify(wedged));
+  check('and always hands over', wedged.every((w) => w.handedOver), JSON.stringify(wedged));
+  check('leaving nothing in hand', wedged.every((w) => w.clean));
+
+  // Repeatedly forcing must keep making progress, never spin on one player.
+  const e = new Engine();
+  e.addPlayer('a', 'A', true);
+  e.addPlayer('b', 'B', false);
+  e.startGame();
+  let guard = 0;
+  const seen = [];
+  while (e.state.phase === 'playing' && guard++ < 200) {
+    seen.push(e.currentPlayerId());
+    e.forceTurn();
+  }
+  check('forcing every turn plays the game to its end', e.state.phase === 'gameEnd',
+    e.state.phase + ' after ' + guard);
+  check('and never stalls on one ranger',
+    seen.every((id, i) => i === 0 || id !== seen[i - 1]));
+}
+
 // --- changing your mind about a pair ----------------------------------------
 // Drafting again before the tile is laid swaps your choice rather than being
 // refused: the display keeps showing all four, so clicking another is the

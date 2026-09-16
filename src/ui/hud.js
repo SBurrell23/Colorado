@@ -7,6 +7,9 @@ import { RULE_TEXT, RULE_TABLE, HABITAT_BONUS } from '../game/scoring.js';
 import { animalGlyph, habitatSwatch, natureGlyph, returnGlyph } from '../render/tileart.js';
 import { animalExample, habitatExample } from '../render/diagrams.js';
 
+// Long enough that nobody sees it while a player is simply thinking.
+const STUCK_AFTER = 45000;
+
 /** Within a line or two of the foot, so a reader scrolled up is left alone. */
 function nearBottom(list) {
   return list.scrollHeight - list.scrollTop - list.clientHeight < 28;
@@ -29,6 +32,7 @@ export class Hud {
     $('#btn-camera').addEventListener('click', () => this.h.onFocusSelf());
     $('#btn-help').addEventListener('click', () => openHelp());
     $('#btn-rules').addEventListener('click', () => openScoring());
+    $('#btn-nudge').addEventListener('click', () => this.h.onForceTurn());
     $('#btn-tally').addEventListener('click', () => {
       if (this.view) this.showResult(this.view);
     });
@@ -116,7 +120,25 @@ export class Hud {
     $('#deck-count').textContent = 'Stack ' + v.deckCount;
   }
 
+  /**
+   * Offered to the host once somebody has been sitting on a turn far longer
+   * than anyone sits and thinks. Whatever wedged it -- a lost connection, a
+   * bug, someone walking away -- the table should not have to abandon the game
+   * over it.
+   */
+  updateNudge() {
+    const v = this.view;
+    const btn = $('#btn-nudge');
+    if (!v || v.phase !== 'playing' || !v.you || !v.you.isHost || !v.turnStartedAt) {
+      show(btn, false);
+      return;
+    }
+    const mine = v.currentPlayerId === v.you.id;
+    show(btn, !mine && Date.now() - v.turnStartedAt > STUCK_AFTER);
+  }
+
   updateTimer() {
+    this.updateNudge();
     const v = this.view;
     const wrap = $('#timer-wrap');
     if (!v || !v.turnEndsAt || v.phase !== 'playing') { show(wrap, false); return; }

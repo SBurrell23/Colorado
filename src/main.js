@@ -85,6 +85,7 @@ async function boot() {
     onChat: (text) => app.session && app.session.say(text),
     onSetting: (k, v) => app.session && app.session.setSettings({ [k]: v }),
     onKick: (id) => app.session && app.session.kick(id),
+    onForceTurn: () => app.session && app.session.forceTurn(),
     onAddBot: () => {
       if (!app.session) return;
       const res = app.session.addBot();

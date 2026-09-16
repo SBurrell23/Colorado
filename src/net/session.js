@@ -261,6 +261,14 @@ export class HostSession extends Emitter {
     return res;
   }
 
+  /** Unstick a turn that is not going anywhere by itself. Host only. */
+  forceTurn() {
+    const res = this.engine.forceTurn();
+    if (res.error) this.emit('reject', res.error);
+    else this.broadcast();
+    return res;
+  }
+
   backToLobby() {
     this.engine.returnToLobby();
     this.broadcast();
@@ -362,6 +370,7 @@ export class ClientSession extends Emitter {
   removeBot() { /* host only */ }
   backToLobby() { /* host only */ }
   kick() { /* host only */ }
+  forceTurn() { /* host only */ }
   leave() {
     if (this.pinger) clearInterval(this.pinger);
     this.pinger = null;

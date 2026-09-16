@@ -184,6 +184,7 @@ export class Engine {
     s.pending = null;
     s.culledThisTurn = false;
     this.resolveOverpopulation();
+    s.turnStartedAt = Date.now();
     s.turnEndsAt = this.settings.turnSeconds > 0
       ? Date.now() + this.settings.turnSeconds * 1000
       : null;
@@ -452,14 +453,22 @@ export class Engine {
     this.advanceTurn();
   }
 
-  /** Time is up: draft the first pair and put both wherever they will go. */
-  tick() {
+  /**
+   * Play the current turn out on its owner's behalf.
+   *
+   * Every beat is attempted and none of them is trusted: whatever happens, the
+   * turn is over by the time this returns. A step that quietly failed used to
+   * leave the turn where it was while the clock kept firing, which meant the
+   * table waited on somebody who was never going to move -- and with the timer
+   * off, which is the default, nothing was ever going to notice.
+   */
+  autoPlay(reason) {
     const s = this.state;
-    if (s.phase !== 'playing' || !s.turnEndsAt) return false;
-    if (Date.now() < s.turnEndsAt) return false;
+    if (s.phase !== 'playing') return false;
     const p = s.players[this.currentPlayerId()];
     if (!p) return false;
-    this.log(p.name + ' runs out of daylight.', 'timeout', { by: p.id });
+    const taken = p.turnsTaken;
+    this.log(p.name + ' ' + reason, 'timeout', { by: p.id });
 
     if (s.turnPhase === 'draft') {
       const idx = s.display.findIndex((d) => d.tile);
@@ -467,15 +476,33 @@ export class Engine {
       this.actDraft(p, { index: idx });
     }
     if (s.turnPhase === 'tile') {
-      const spots = openHexes(p.env);
-      this.actPlaceTile(p, { ...spots[0], rot: 0 });
+      const spot = openHexes(p.env).find((h) => canPlaceTile(p.env, h.q, h.r));
+      if (spot) this.actPlaceTile(p, { q: spot.q, r: spot.r, rot: 0 });
     }
     if (s.turnPhase === 'token') {
-      const spots = openTokenHexes(p.env, s.pending.token);
+      const token = s.pending && s.pending.token;
+      const spots = token ? openTokenHexes(p.env, token) : [];
       if (spots.length) this.actPlaceToken(p, spots[0]);
-      else this.finishTurn(p);
+      else this.actSkipToken(p);
     }
+    // The backstop: if none of that moved the game on, end the turn anyway.
+    if (s.phase === 'playing' && p.turnsTaken === taken) this.finishTurn(p);
     return true;
+  }
+
+  /** Time is up: draft the first pair and put both wherever they will go. */
+  tick() {
+    const s = this.state;
+    if (s.phase !== 'playing' || !s.turnEndsAt) return false;
+    if (Date.now() < s.turnEndsAt) return false;
+    return this.autoPlay('runs out of daylight.');
+  }
+
+  /** The host pushing a turn along that is not going anywhere by itself. */
+  forceTurn() {
+    if (this.state.phase !== 'playing') return { error: 'No turn to play.' };
+    this.autoPlay('cannot go on — their turn is played out for them.');
+    return { ok: true };
   }
 
   finish() {
@@ -513,6 +540,7 @@ export class Engine {
       currentPlayerId: s.phase === 'playing' ? this.currentPlayerId() : null,
       turnPhase: s.turnPhase,
       turnEndsAt: s.turnEndsAt,
+      turnStartedAt: s.turnStartedAt || null,
       // The slots it came out of travel with it, so the display can show the
       // pair still sitting where it was, lifted, rather than blanking it.
       pending: s.pending
