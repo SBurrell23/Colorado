@@ -480,21 +480,31 @@ console.log('\nwaving an animal on');
 console.log('\nplaying a stuck turn out');
 {
   const wedged = [];
-  // From each of the three beats, and from a board with nowhere legal to lay.
   for (const beat of ['draft', 'tile', 'token']) {
-    const e = new Engine();
-    e.addPlayer('a', 'A', true);
-    e.addPlayer('b', 'B', false);
-    e.startGame();
-    const id = e.currentPlayerId();
-    const p = e.state.players[id];
-    if (beat !== 'draft') {
-      e.handle(id, { t: 'draft', index: 0 });
-      if (beat === 'token') {
-        const spot = openHexes(p.env).filter((h) => canPlaceTile(p.env, h.q, h.r))[0];
-        e.handle(id, { t: 'placeTile', q: spot.q, r: spot.r, rot: 0 });
+    // Reaching a given beat depends on the deal -- an animal with nowhere to go
+    // ends the turn the moment its tile is laid -- so deal again until we are
+    // actually sitting where we mean to be.
+    let e;
+    let id;
+    let p;
+    let tries = 0;
+    do {
+      e = new Engine();
+      e.addPlayer('a', 'A', true);
+      e.addPlayer('b', 'B', false);
+      e.startGame();
+      id = e.currentPlayerId();
+      p = e.state.players[id];
+      if (beat !== 'draft') {
+        e.handle(id, { t: 'draft', index: 0 });
+        if (beat === 'token') {
+          const spot = openHexes(p.env).filter((h) => canPlaceTile(p.env, h.q, h.r))[0];
+          e.handle(id, { t: 'placeTile', q: spot.q, r: spot.r, rot: 0 });
+        }
       }
-    }
+    } while (e.state.turnPhase !== beat && tries++ < 60);
+    check('a turn can be wedged at the ' + beat + ' beat', e.state.turnPhase === beat);
+
     const before = p.turnsTaken;
     const moved = e.forceTurn();
     wedged.push({
