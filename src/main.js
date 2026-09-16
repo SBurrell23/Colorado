@@ -75,6 +75,7 @@ async function boot() {
     },
     onCancelMode: () => setMode(null),
     onBackToLobby: () => app.session && app.session.backToLobby(),
+    onForceTurn: () => app.session && app.session.forceTurn(),
   });
 
   app.menu = new Menu({
@@ -606,11 +607,18 @@ function attachSession(session) {
     app.menu.showTitle();
     app.menu.setStatus(reason, true);
   });
+  session.on('reconnecting', (n, of) => {
+    banner('Connection lost — rejoining (' + n + '/' + of + ')', true, 12000);
+  });
+  session.on('reconnected', () => {
+    clearBanner();
+    toast('Back on the trail.', 'good');
+  });
   session.on('closed', () => {
     endSession();
     app.menu.showTitle();
-    app.menu.setStatus('The game closed.', true);
-    toast('The host closed the game.', 'bad', 5000);
+    app.menu.setStatus('The connection to the game was lost.', true);
+    toast('Lost the connection to the game.', 'bad', 5000);
   });
 }
 

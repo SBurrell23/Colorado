@@ -134,7 +134,12 @@ export class Hud {
       return;
     }
     const mine = v.currentPlayerId === v.you.id;
-    show(btn, !mine && Date.now() - v.turnStartedAt > STUCK_AFTER);
+    // Somebody who has dropped is played out for automatically after the grace
+    // period, but the host should not have to wait for that if they know the
+    // ranger is not coming back.
+    const cur = v.players.find((p) => p.id === v.currentPlayerId);
+    const gone = !!cur && !cur.connected && !cur.isBot;
+    show(btn, !mine && (gone || Date.now() - v.turnStartedAt > STUCK_AFTER));
   }
 
   updateTimer() {
@@ -163,11 +168,17 @@ export class Hud {
       if (p.isBot) classes.push('bot');
 
       const tiles = Object.keys(p.env || {}).length;
+      // Being away and being played for are different things to a table that
+      // is deciding whether to wait: say which one this is.
+      const state = !p.connected
+        ? (p.away ? ' Off the trail — their turns are being played out for them.'
+          : ' Off the trail; the table is holding their turn for a moment.')
+        : '';
       const li = el('li', {
         class: classes.join(' '),
         'data-tip-title': p.name + "'s board",
         'data-tip': 'Click to look it over. ' + tiles + ' tiles down, '
-          + p.turnsTaken + ' of ' + v.turnsEach + ' turns taken.',
+          + p.turnsTaken + ' of ' + v.turnsEach + ' turns taken.' + state,
         onclick: () => this.h.onWatch(p.id),
       }, [
         el('span', { class: 'dot', style: { background: p.colour, color: p.colour } }),

@@ -5,7 +5,7 @@
   "type": "module",
   "description": "A 3D peer-to-peer tile-laying game set in the Colorado Rockies: build habitat corridors and settle the wildlife that belongs in them.",
   "scripts": {
-    "test": "node tests/sim.mjs",
+    "test": "node tests/sim.mjs && node tests/net.mjs",
     "start": "npx --yes http-server . -p 4173 -c-1"
   }
 }
