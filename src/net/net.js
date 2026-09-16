@@ -64,6 +64,14 @@ export class NetHost extends Emitter {
     this.code = null;
     this.conns = new Map();   // peerId -> DataConnection
     this.open = false;
+    this.closed = false;      // the host deliberately shut the room
+    this.relistening = false;
+  }
+
+  /** Is there still a usable channel to this peer? */
+  isOpen(peerId) {
+    const c = this.conns.get(peerId);
+    return !!(c && c.open);
   }
 
   async start(preferredCode) {
@@ -129,11 +137,52 @@ export class NetHost extends Emitter {
         return;
       }
       this.emit('error', err);
+      // Whatever went wrong, the game itself is still here and its players are
+      // still connected over WebRTC. Get the door open again so anybody who
+      // drops can find their way back in.
+      this.relisten();
     });
     peer.on('disconnected', () => {
       this.emit('warn', new Error('Lost the signalling server; trying to reconnect.'));
-      try { peer.reconnect(); } catch (e) { /* nothing more to do */ }
+      try {
+        if (peer.destroyed) this.relisten();
+        else peer.reconnect();
+      } catch (e) { this.relisten(); }
     });
+    peer.on('close', () => { if (!this.closed) this.relisten(); });
+  }
+
+  /**
+   * Re-open the room under the same code after the broker dropped us.
+   *
+   * Direct connections to the guests already in the game are peer-to-peer and
+   * outlive the signalling server, so this is about the door, not the table:
+   * without it, a guest whose connection drops has nowhere to knock.
+   */
+  async relisten() {
+    if (this.closed || this.relistening || !this.code) return;
+    if (this.peer && !this.peer.destroyed && this.peer.open) return;
+    this.relistening = true;
+    const dead = this.peer;
+    try {
+      const Peer = await waitForPeerLib();
+      for (let i = 0; i < 6; i++) {
+        await new Promise((r) => setTimeout(r, Math.min(15000, 1000 * 2 ** i)));
+        if (this.closed) return;
+        if (this.peer && this.peer !== dead && !this.peer.destroyed && this.peer.open) return;
+        try {
+          // tryOpen replaces `this.peer`; `this.conns` is untouched, so the
+          // guests already at the table keep the channels they are on.
+          await this.tryOpen(Peer, this.code);
+          if (dead && dead !== this.peer) { try { dead.destroy(); } catch (e) { /* gone */ } }
+          this.emit('relisten', this.code);
+          return;
+        } catch (err) { /* try again */ }
+      }
+      this.emit('error', new Error('The room could not be re-opened; nobody new can join.'));
+    } finally {
+      this.relistening = false;
+    }
   }
 
   send(peerId, msg) {
@@ -158,6 +207,7 @@ export class NetHost extends Emitter {
   }
 
   destroy() {
+    this.closed = true;
     for (const [, c] of this.conns) { try { c.close(); } catch (e) { /* ignore */ } }
     this.conns.clear();
     if (this.peer) { try { this.peer.destroy(); } catch (e) { /* ignore */ } }
@@ -172,6 +222,14 @@ export class NetClient extends Emitter {
     this.peer = null;
     this.conn = null;
     this.code = null;
+    this.gone = false;   // 'close' is announced once and once only
+  }
+
+  /** Announce the link as gone, whichever way we found out. */
+  dropped() {
+    if (this.gone) return;
+    this.gone = true;
+    this.emit('close');
   }
 
   async connect(code) {
@@ -197,8 +255,15 @@ export class NetClient extends Emitter {
           resolve();
         });
         conn.on('data', (data) => this.emit('message', data));
-        conn.on('close', () => this.emit('close'));
-        conn.on('error', (err) => fail(err));
+        conn.on('close', () => this.dropped());
+        conn.on('error', (err) => {
+          // Before the handshake finishes this is a failure to join. After it,
+          // the channel is simply gone -- and it does not always follow with a
+          // 'close', so saying nothing here left the guest staring at a board
+          // that would never update again.
+          if (!settled) fail(err);
+          else this.dropped();
+        });
         setTimeout(() => {
           if (!settled) fail(new Error('No room answered that code.'));
         }, 20000);
@@ -211,11 +276,18 @@ export class NetClient extends Emitter {
           fail(err);
         } else {
           this.emit('warn', err);
+          // The signalling server going away is survivable; our own peer being
+          // destroyed is not, and the session has to be told so it can rejoin.
+          if (peer.destroyed || (err && err.type === 'network')) this.dropped();
         }
       });
       peer.on('disconnected', () => {
-        try { peer.reconnect(); } catch (e) { /* ignore */ }
+        try {
+          if (peer.destroyed) this.dropped();
+          else peer.reconnect();
+        } catch (e) { this.dropped(); }
       });
+      peer.on('close', () => { if (settled) this.dropped(); });
     });
   }
 
@@ -226,6 +298,7 @@ export class NetClient extends Emitter {
   }
 
   destroy() {
+    this.gone = true;   // a teardown we asked for is not a drop to report
     if (this.conn) { try { this.conn.close(); } catch (e) { /* ignore */ } }
     if (this.peer) { try { this.peer.destroy(); } catch (e) { /* ignore */ } }
     this.conn = null;

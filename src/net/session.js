@@ -20,6 +20,30 @@ class Emitter {
 
 const MAX_CHAT = 60;
 
+/**
+ * The host asks every peer to say something every few seconds, and gives up on
+ * one that has not answered in four beats.
+ *
+ * A link can die without either end being told: a laptop lid closes, a phone
+ * changes network, ICE quietly gives up. The connection object still reads as
+ * open, so the host went on believing somebody was there and, if it was their
+ * turn, waited on them forever. Asking is the only way to know.
+ *
+ * The probe is host-driven on purpose. A background tab's timers are throttled
+ * to a crawl, so a guest pinging on its own clock looks dead even when it is
+ * fine -- but it still answers a message the moment one arrives.
+ */
+const HEARTBEAT_MS = 4000;
+const PEER_QUIET_MS = 16000;
+
+/**
+ * A guest may send this many messages per window before the rest are dropped.
+ * Well clear of normal play -- a fast turn is a handful of messages and the
+ * heartbeat reply is one every four seconds.
+ */
+const MSG_BUDGET = 80;
+const MSG_WINDOW = 2000;
+
 export class HostSession extends Emitter {
   constructor(name, settings) {
     super();
@@ -36,7 +60,10 @@ export class HostSession extends Emitter {
     // bridge between the two.
     this.playerOf = new Map();   // peerId  -> playerId
     this.peerOf = new Map();     // playerId -> peerId
+    this.lastSeen = new Map();   // peerId  -> ms, when they last said anything
+    this.budget = new Map();     // peerId  -> { n, until }
     this.timer = null;
+    this.beat = null;
     this.botSeq = 0;
     this.ping = 0;      // the host is the host; nothing to wait for
     this.botDeadline = 0;
@@ -52,38 +79,103 @@ export class HostSession extends Emitter {
     this.engine.addPlayer(this.localId, this.name, true);
     this.code = await this.net.start(preferredCode || randomCode());
 
-    this.net.on('connect', (peerId) => this.pending.set(peerId, Date.now()));
-    this.net.on('message', (peerId, msg) => this.onMessage(peerId, msg));
-    this.net.on('disconnect', (peerId) => {
-      const pid = this.playerOf.get(peerId);
-      this.playerOf.delete(peerId);
-      if (pid && this.peerOf.get(pid) === peerId) this.peerOf.delete(pid);
-      const p = pid && this.engine.state.players[pid];
-      if (p) {
-        this.pushChat(null, p.name + ' has left the trail.', 'system');
-        // Mid-game their seat is kept warm; they can come back to it.
-        this.engine.setConnected(pid, false);
-      }
-      this.pending.delete(peerId);
-      this.emit('sfx', 'leave');
-      this.net.broadcast({ t: 'sfx', name: 'leave' });
-      this.broadcast();
+    this.net.on('connect', (peerId) => {
+      this.pending.set(peerId, Date.now());
+      this.lastSeen.set(peerId, Date.now());
     });
+    this.net.on('message', (peerId, msg) => this.onMessage(peerId, msg));
+    this.net.on('disconnect', (peerId) => this.dropPeer(peerId));
     this.net.on('error', (err) => this.emit('error', err.message || String(err)));
     this.net.on('warn', (err) => console.warn('[host]', err));
+    this.net.on('relisten', () => this.pushChat(null, 'The room is open again.', 'system'));
 
     this.timer = setInterval(() => {
-      let changed = this.engine.tick();
+      let changed = this.sweep();
+      if (this.engine.tick()) changed = true;
       if (this.runBot()) changed = true;
       if (changed) this.broadcast();
     }, 250);
+
+    // Ask everyone to speak up, so a link that has quietly died can be told
+    // apart from a guest who is simply thinking.
+    this.beat = setInterval(() => {
+      this.net.broadcast({ t: 'ping', at: Date.now() });
+    }, HEARTBEAT_MS);
 
     this.broadcast();
     return this.code;
   }
 
+  /** Is this peer both connected and still answering? */
+  isLive(peerId) {
+    if (!peerId) return false;
+    if (this.net.isOpen && !this.net.isOpen(peerId)) return false;
+    const seen = this.lastSeen.get(peerId);
+    return !!seen && Date.now() - seen < PEER_QUIET_MS;
+  }
+
+  /**
+   * A peer is gone -- because the channel closed, or because it stopped
+   * answering. Their seat stays warm; the engine plays their turns out for
+   * them after a grace period so the table is never held up.
+   */
+  dropPeer(peerId, quiet = false) {
+    const pid = this.playerOf.get(peerId);
+    this.playerOf.delete(peerId);
+    if (pid && this.peerOf.get(pid) === peerId) this.peerOf.delete(pid);
+    this.pending.delete(peerId);
+    this.lastSeen.delete(peerId);
+    this.budget.delete(peerId);
+    const p = pid && this.engine.state.players[pid];
+    if (p && !quiet) {
+      this.pushChat(null, p.name + ' has left the trail.', 'system');
+      this.emit('sfx', 'leave');
+      this.net.broadcast({ t: 'sfx', name: 'leave' });
+    }
+    // Mid-game their seat is kept warm; they can come back to it.
+    if (pid) this.engine.setConnected(pid, false);
+    this.broadcast();
+  }
+
+  /**
+   * Once a beat: hang up on anyone who has gone quiet, and on anyone who
+   * knocked but never introduced themselves.
+   */
+  sweep() {
+    const now = Date.now();
+    let changed = false;
+    for (const [peerId, seen] of [...this.lastSeen]) {
+      if (now - seen < PEER_QUIET_MS) continue;
+      this.net.kick(peerId);
+      this.dropPeer(peerId);
+      changed = true;
+    }
+    for (const [peerId, at] of [...this.pending]) {
+      if (now - at < PEER_QUIET_MS) continue;
+      this.net.kick(peerId);
+      this.dropPeer(peerId, true);
+      changed = true;
+    }
+    return changed;
+  }
+
+  /** One guest must not be able to drown the host in messages. */
+  overBudget(peerId) {
+    const now = Date.now();
+    let b = this.budget.get(peerId);
+    if (!b || now > b.until) {
+      b = { n: 0, until: now + MSG_WINDOW };
+      this.budget.set(peerId, b);
+    }
+    b.n += 1;
+    return b.n > MSG_BUDGET;
+  }
+
   onMessage(peerId, msg) {
     if (!msg || typeof msg !== 'object') return;
+    // Anything at all counts as a sign of life, including the heartbeat reply.
+    this.lastSeen.set(peerId, Date.now());
+    if (this.overBudget(peerId)) return;
     const s = this.engine.state;
 
     if (msg.t === 'hello') {
@@ -91,14 +183,39 @@ export class HostSession extends Emitter {
         this.net.send(peerId, { t: 'denied', reason });
         setTimeout(() => this.net.kick(peerId), 500);
       };
+
+      // A second hello down a channel that already has a seat is a rename and
+      // nothing else. Letting it claim a fresh seat left the first one behind
+      // with nobody behind it -- a ghost the table would wait on forever.
+      const held = this.playerOf.get(peerId);
+      if (held && s.players[held]) {
+        if (msg.name) this.engine.rename(held, msg.name);
+        this.broadcast();
+        return;
+      }
+
       const wanted = typeof msg.clientId === 'string' && /^[a-z0-9]{6,40}$/.test(msg.clientId)
         ? msg.clientId : null;
 
-      // Returning to a seat you already hold, unless somebody is still sitting
-      // in it -- two tabs with the same stored id must not fight over one.
+      // Coming back to a seat you already hold. It is yours unless somebody is
+      // demonstrably still sitting in it -- two tabs with the same stored id
+      // must not fight over one, but a seat whose channel has quietly died is
+      // not occupied, whatever the engine still believes.
       let id = null;
-      if (wanted && s.players[wanted] && !s.players[wanted].isBot && !s.players[wanted].connected) {
-        id = wanted;
+      const seat = wanted ? s.players[wanted] : null;
+      if (seat && !seat.isBot) {
+        const holder = this.peerOf.get(wanted);
+        const occupied = holder && holder !== peerId && this.isLive(holder);
+        if (!occupied) {
+          if (holder && holder !== peerId) {
+            // Whatever was in the seat is not answering; hang up on it first.
+            this.net.kick(holder);
+            this.dropPeer(holder, true);
+          }
+          id = wanted;
+        } else if (s.phase !== 'lobby') {
+          return deny('Someone is already playing from that seat.');
+        }
       }
 
       if (id) {
@@ -127,6 +244,9 @@ export class HostSession extends Emitter {
       this.net.send(peerId, { t: 'pong', at: msg.at });
       return;
     }
+    // The reply to our own heartbeat. Noting that they spoke is the whole
+    // point of it, and that is already done above.
+    if (msg.t === 'pong') return;
 
     // Everything else has to come from a seat we know about.
     const pid = this.playerOf.get(peerId);
@@ -143,6 +263,7 @@ export class HostSession extends Emitter {
       return;
     }
     if (msg.t === 'intent') {
+      if (!msg.action || typeof msg.action !== 'object') return;
       const res = this.engine.handle(pid, msg.action);
       if (res && res.error) this.net.send(peerId, { t: 'reject', reason: res.error });
       else this.broadcast();
@@ -284,13 +405,20 @@ export class HostSession extends Emitter {
       setTimeout(() => this.net.kick(peerId), 300);
       this.playerOf.delete(peerId);
       this.peerOf.delete(playerId);
+      this.lastSeen.delete(peerId);
+      this.budget.delete(peerId);
     }
+    // removePlayer keeps the turn pointer on the seat that was playing, so
+    // this cannot leave the game with nobody whose turn it is.
     this.engine.removePlayer(playerId);
     this.broadcast();
   }
 
   leave() {
     if (this.timer) clearInterval(this.timer);
+    if (this.beat) clearInterval(this.beat);
+    this.timer = null;
+    this.beat = null;
     this.net.broadcast({ t: 'denied', reason: 'The host has closed the game.' });
     setTimeout(() => this.net.destroy(), 200);
   }
@@ -303,18 +431,28 @@ export class HostSession extends Emitter {
  * already started.
  */
 const CLIENT_ID_KEY = 'colorado.clientId';
+const makeClientId = () => 'c' + Math.random().toString(36).slice(2, 12) + Date.now().toString(36);
+let memoryClientId = null;
+
 function clientId() {
   try {
     let id = localStorage.getItem(CLIENT_ID_KEY);
     if (!id || !/^[a-z0-9]{6,40}$/.test(id)) {
-      id = 'c' + Math.random().toString(36).slice(2, 12) + Date.now().toString(36);
+      id = makeClientId();
       localStorage.setItem(CLIENT_ID_KEY, id);
     }
     return id;
   } catch (err) {
-    return null;   // private mode: fall back to a peer-keyed seat
+    // Private mode. An id that lives as long as the page does is still worth
+    // having: a fresh connection gets a fresh peer id, so without one even a
+    // rejoin two seconds later would be turned away as a stranger.
+    memoryClientId = memoryClientId || makeClientId();
+    return memoryClientId;
   }
 }
+
+/** How hard a guest tries to get back in before giving up on the game. */
+const REJOIN_TRIES = 8;
 
 export class ClientSession extends Emitter {
   constructor(name) {
@@ -328,11 +466,25 @@ export class ClientSession extends Emitter {
     this.clientId = clientId();
     this.ping = null;   // milliseconds there and back, once we know
     this.pinger = null;
+    this.retry = null;
+    this.tries = 0;
+    this.left = false;    // we walked away
+    this.denied = false;  // the host showed us the door
   }
 
   async start(code) {
-    await this.net.connect(code);
     this.code = code;
+    await this.open();
+  }
+
+  /**
+   * Open a channel to the room and introduce ourselves.
+   *
+   * Called again for every rejoin, so everything it sets up is bound to the
+   * NetClient of the moment and nothing is left over from the last one.
+   */
+  async open() {
+    await this.net.connect(this.code);
     this.net.on('message', (msg) => {
       if (!msg || typeof msg !== 'object') return;
       switch (msg.t) {
@@ -347,19 +499,62 @@ export class ClientSession extends Emitter {
             ? Date.now() - msg.at
             : Math.round(this.ping * 0.6 + (Date.now() - msg.at) * 0.4);
           break;
+        // The host checking we are still here. Answering the moment it
+        // arrives is what keeps us alive to it even when this tab is in the
+        // background and our own timers have been throttled to a crawl.
+        case 'ping':   this.net.send({ t: 'pong', at: msg.at }); break;
         case 'sfx':    this.emit('sfx', msg.name); break;
         case 'reject': this.emit('reject', msg.reason); break;
-        case 'denied': this.emit('denied', msg.reason); break;
+        case 'denied':
+          this.denied = true;   // being turned away is not something to retry
+          this.emit('denied', msg.reason);
+          break;
         default: break;
       }
     });
-    this.net.on('close', () => this.emit('closed'));
+    this.net.on('close', () => this.rejoin());
     this.net.on('warn', (err) => console.warn('[client]', err));
     this.net.send({ t: 'hello', name: this.name, clientId: this.clientId });
 
+    this.stopPinger();
     const ping = () => this.net.send({ t: 'ping', at: Date.now() });
     ping();
     this.pinger = setInterval(ping, 3000);
+  }
+
+  stopPinger() {
+    if (this.pinger) clearInterval(this.pinger);
+    this.pinger = null;
+  }
+
+  /**
+   * The channel went away. Unless we left or were thrown out, try to get back
+   * in: the host keeps a seat warm under our stored id, so a dropped guest
+   * picks up the board they were building rather than losing the game.
+   */
+  rejoin() {
+    if (this.left || this.denied || this.retry) return;
+    this.stopPinger();
+    this.tries += 1;
+    if (this.tries > REJOIN_TRIES) {
+      this.emit('closed');
+      return;
+    }
+    this.emit('reconnecting', this.tries, REJOIN_TRIES);
+    const wait = Math.min(6000, Math.round(600 * 1.8 ** (this.tries - 1)));
+    this.retry = setTimeout(async () => {
+      this.retry = null;
+      if (this.left || this.denied) return;
+      try { this.net.destroy(); } catch (err) { /* already gone */ }
+      this.net = new NetClient();
+      try {
+        await this.open();
+        this.tries = 0;
+        this.emit('reconnected');
+      } catch (err) {
+        this.rejoin();
+      }
+    }, wait);
   }
 
   intent(action) { this.net.send({ t: 'intent', action }); }
@@ -372,8 +567,10 @@ export class ClientSession extends Emitter {
   kick() { /* host only */ }
   forceTurn() { /* host only */ }
   leave() {
-    if (this.pinger) clearInterval(this.pinger);
-    this.pinger = null;
+    this.left = true;
+    this.stopPinger();
+    if (this.retry) clearTimeout(this.retry);
+    this.retry = null;
     this.net.destroy();
   }
 }

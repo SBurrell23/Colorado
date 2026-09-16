@@ -25,9 +25,33 @@ export const DEFAULT_SETTINGS = {
   turnSeconds: 0,        // 0 = untimed
   botSkill: 'ranger',    // novice | ranger | naturalist
   cullThree: true,       // may a player clear three matching tokens for free
+  // How long a seat may sit empty before the table stops waiting on it. The
+  // seat is still theirs -- they can come back to it -- but their turns get
+  // played out for them meanwhile, so one dropped guest cannot end the game
+  // for everybody else. 0 turns this off.
+  dropGraceSeconds: 45,
 };
 
 const MAX_LOG = 140;
+
+/**
+ * Once a seat has been given up on, its turns are played out on a short beat
+ * rather than the full grace period again -- otherwise a party of five would
+ * spend the rest of the season waiting out the same timer.
+ */
+const AWAY_BEAT_MS = 1200;
+
+/** A display slot index that arrived over the wire, or -1 if it is nonsense. */
+function slotIndex(v) {
+  const n = Number(v);
+  return Number.isInteger(n) && n >= 0 && n < DISPLAY_SIZE ? n : -1;
+}
+
+/** A hex coordinate that arrived over the wire, or null if it is nonsense. */
+function coord(v) {
+  const n = Number(v);
+  return Number.isFinite(n) ? Math.trunc(n) : null;
+}
 
 /** "an elk", "an eagle", "a coyote" -- the log reads aloud, so it should scan. */
 const article = (word) => ('aeiou'.includes(String(word)[0]) ? 'an' : 'a');
@@ -75,6 +99,8 @@ export class Engine {
       isHost,
       isBot,
       connected: true,
+      offlineSince: null,
+      away: false,       // given up on: their turns are played out for them
       env: {},
       nature: 0,
       turnsTaken: 0,
@@ -87,13 +113,77 @@ export class Engine {
   setConnected(id, connected) {
     const p = this.state.players[id];
     if (!p) return;
+    // Going quiet twice over must not restart the clock on the first drop.
+    if (p.connected === connected) {
+      if (!connected && !p.offlineSince) p.offlineSince = Date.now();
+      return;
+    }
     p.connected = connected;
+    if (connected) {
+      p.offlineSince = null;
+      p.away = false;
+    } else {
+      p.offlineSince = Date.now();
+    }
     if (!connected && this.state.phase === 'lobby') this.removePlayer(id);
   }
 
+  /**
+   * Take a seat out of the game.
+   *
+   * The turn pointer is an index into `order`, so pulling a seat out from
+   * under it used to leave it pointing at a seat that was no longer there --
+   * or past the end of the list entirely. Nobody was then the current player,
+   * every move was refused as out of turn, and even the host's nudge had
+   * nobody to nudge: the game was over without ever ending.
+   */
   removePlayer(id) {
-    delete this.state.players[id];
-    this.state.order = this.state.order.filter((x) => x !== id);
+    const s = this.state;
+    const idx = s.order.indexOf(id);
+    delete s.players[id];
+    if (idx < 0) return;
+    const wasTheirTurn = s.phase === 'playing' && idx === s.turnIndex;
+    // Whatever they were holding goes back on offer rather than out of the box.
+    if (wasTheirTurn) this.returnPending();
+    s.order.splice(idx, 1);
+
+    if (!s.order.length) {
+      s.turnIndex = 0;
+      if (s.phase === 'playing') this.finish();
+      return;
+    }
+    // A seat leaving ahead of the pointer shifts everyone after it down one;
+    // the seat that was on turn has to stay on turn.
+    if (idx < s.turnIndex) s.turnIndex -= 1;
+    s.turnIndex = ((s.turnIndex % s.order.length) + s.order.length) % s.order.length;
+
+    if (wasTheirTurn && s.phase === 'playing') {
+      // Their turn goes with them. The next seat starts a clean one.
+      if (this.everyoneDone()) this.finish();
+      else this.beginTurn();
+    }
+  }
+
+  /**
+   * Put whatever is in hand back where it came from, with nobody to refund.
+   * Used when a seat disappears mid-turn -- the tile and the token belong to
+   * the game, not to the player who happened to be holding them.
+   */
+  returnPending() {
+    const s = this.state;
+    if (!s.pending) return;
+    const { tile, token, tileIdx, tokenIdx } = s.pending;
+    // At the token beat the tile is already down; only the animal is in hand.
+    if (s.turnPhase === 'tile' && tile) {
+      if (s.display[tileIdx] && !s.display[tileIdx].tile) s.display[tileIdx].tile = tile;
+      else this.deck.unshift(tile);
+    }
+    if (token) {
+      if (s.display[tokenIdx] && !s.display[tokenIdx].token) s.display[tokenIdx].token = token;
+      else this.bag.push(token);
+    }
+    s.pending = null;
+    s.turnPhase = 'draft';
   }
 
   rename(id, name) {
@@ -137,6 +227,7 @@ export class Engine {
       p.env = startingEnvironment(starters[i % starters.length]);
       p.nature = 0;
       p.turnsTaken = 0;
+      p.away = false;   // a fresh season gives everyone the benefit of the doubt
     });
 
     s.display = [];
@@ -169,17 +260,45 @@ export class Engine {
       p.env = {};
       p.nature = 0;
       p.turnsTaken = 0;
+      p.away = false;
     }
   }
 
   // -- turn plumbing ------------------------------------------------------
+  /**
+   * Whoever is on turn. The pointer is kept inside the list here as well as
+   * wherever it is moved, so that however it came to be out of range there is
+   * always somebody whose turn it is and the game can always go on.
+   */
   currentPlayerId() {
-    return this.state.order[this.state.turnIndex];
+    const s = this.state;
+    if (!s.order.length) return null;
+    const i = s.turnIndex;
+    if (!Number.isInteger(i) || i < 0 || i >= s.order.length) {
+      s.turnIndex = Number.isFinite(i)
+        ? ((Math.trunc(i) % s.order.length) + s.order.length) % s.order.length
+        : 0;
+    }
+    return s.order[s.turnIndex];
+  }
+
+  /** Has every remaining seat had all the turns the season allows? */
+  everyoneDone() {
+    const s = this.state;
+    return s.order.length > 0 && s.order.every((id) => s.players[id].turnsTaken >= s.turnsEach);
   }
 
   beginTurn() {
     const s = this.state;
     if (s.phase !== 'playing') return;
+    // Nothing left to draft: the stack has run out and no turn can be played
+    // from here, so the season closes rather than stopping dead on somebody
+    // with no legal move.
+    if (!s.display.some((d) => d && d.tile)) {
+      this.log('The stack is empty — the season closes early.', 'round');
+      this.finish();
+      return;
+    }
     s.turnPhase = 'draft';
     s.pending = null;
     s.culledThisTurn = false;
@@ -195,8 +314,8 @@ export class Engine {
     const p = s.players[this.currentPlayerId()];
     if (p) p.turnsTaken += 1;
 
-    const done = s.order.every((id) => s.players[id].turnsTaken >= s.turnsEach);
-    if (done) {
+    if (!s.order.length) { this.finish(); return; }
+    if (this.everyoneDone()) {
       this.finish();
       return;
     }
@@ -258,6 +377,12 @@ export class Engine {
   // -- intents ------------------------------------------------------------
   handle(playerId, msg) {
     const s = this.state;
+    // Anything at all can arrive over the wire. A move the engine cannot read
+    // is refused here rather than being allowed to throw halfway through a
+    // rule and leave the game in a state no move can get it out of.
+    if (!msg || typeof msg !== 'object' || typeof msg.t !== 'string') {
+      return { error: 'Unknown move.' };
+    }
     if (s.phase === 'gameEnd') {
       if (msg.t === 'lobby' && s.players[playerId] && s.players[playerId].isHost) {
         this.returnToLobby();
@@ -284,7 +409,8 @@ export class Engine {
   actCull(p, msg) {
     const s = this.state;
     if (s.turnPhase !== 'draft') return { error: 'Too late to clear tokens.' };
-    const indices = (msg.indices || []).filter((i) => i >= 0 && i < DISPLAY_SIZE);
+    const raw = Array.isArray(msg.indices) ? msg.indices.slice(0, DISPLAY_SIZE) : [];
+    const indices = [...new Set(raw.map(slotIndex))].filter((i) => i >= 0);
     if (!indices.length) return { error: 'Nothing chosen to clear.' };
 
     const matching = this.matchingTokenIndices();
@@ -321,14 +447,14 @@ export class Engine {
     }
     if (s.turnPhase !== 'draft') return { error: 'Already drafted.' };
 
-    let tileIdx = msg.tileIndex;
-    let tokenIdx = msg.tokenIndex;
+    let tileIdx = slotIndex(msg.tileIndex);
+    let tokenIdx = slotIndex(msg.tokenIndex);
     if (msg.index !== undefined) {
-      tileIdx = msg.index;
-      tokenIdx = msg.index;
+      tileIdx = slotIndex(msg.index);
+      tokenIdx = tileIdx;
     }
-    if (!(tileIdx >= 0 && tileIdx < DISPLAY_SIZE)) return { error: 'No such tile.' };
-    if (!(tokenIdx >= 0 && tokenIdx < DISPLAY_SIZE)) return { error: 'No such token.' };
+    if (tileIdx < 0) return { error: 'No such tile.' };
+    if (tokenIdx < 0) return { error: 'No such token.' };
 
     const tile = s.display[tileIdx].tile;
     const token = s.display[tokenIdx].token;
@@ -374,8 +500,11 @@ export class Engine {
   actPlaceTile(p, msg) {
     const s = this.state;
     if (s.turnPhase !== 'tile') return { error: 'No tile in hand.' };
-    const { q, r } = msg;
+    const q = coord(msg.q);
+    const r = coord(msg.r);
+    if (q === null || r === null) return { error: 'That is not a place on the map.' };
     const rot = ((msg.rot | 0) % 6 + 6) % 6;
+    if (!s.pending || !s.pending.tile) return { error: 'No tile in hand.' };
     if (!canPlaceTile(p.env, q, r)) return { error: 'A tile must touch your land.' };
 
     placeTile(p.env, q, r, s.pending.tile, rot);
@@ -399,8 +528,10 @@ export class Engine {
   actPlaceToken(p, msg) {
     const s = this.state;
     if (s.turnPhase !== 'token') return { error: 'No token in hand.' };
-    const token = s.pending.token;
-    const { q, r } = msg;
+    const token = s.pending && s.pending.token;
+    const q = coord(msg.q);
+    const r = coord(msg.r);
+    if (q === null || r === null) return { error: 'That is not a place on the map.' };
     if (!canPlaceToken(p.env, q, r, token)) return { error: 'That animal will not settle there.' };
 
     const hex = p.env[hexKey(q, r)];
@@ -465,8 +596,11 @@ export class Engine {
   autoPlay(reason) {
     const s = this.state;
     if (s.phase !== 'playing') return false;
+    if (!s.order.length) { this.finish(); return true; }
     const p = s.players[this.currentPlayerId()];
-    if (!p) return false;
+    // No such seat: the game cannot be played on from here, and pretending
+    // there is nothing to do would leave it stuck forever. End it instead.
+    if (!p) { this.finish(); return true; }
     const taken = p.turnsTaken;
     this.log(p.name + ' ' + reason, 'timeout', { by: p.id });
 
@@ -490,11 +624,37 @@ export class Engine {
     return true;
   }
 
-  /** Time is up: draft the first pair and put both wherever they will go. */
+  /**
+   * The heartbeat. Two things can make a turn play itself: the clock running
+   * out, and the ranger whose turn it is having gone off the trail.
+   *
+   * The second matters more than the first, because the timer is off by
+   * default: without it, one guest closing their laptop mid-game left the
+   * other four watching a board that would never move again.
+   */
   tick() {
     const s = this.state;
-    if (s.phase !== 'playing' || !s.turnEndsAt) return false;
-    if (Date.now() < s.turnEndsAt) return false;
+    if (s.phase !== 'playing') return false;
+    if (!s.order.length) { this.finish(); return true; }
+
+    const p = s.players[this.currentPlayerId()];
+    if (!p) return this.autoPlay('is no longer at the table.');
+
+    const grace = Math.max(0, this.settings.dropGraceSeconds || 0) * 1000;
+    if (grace && !p.connected && !p.isBot) {
+      if (!p.offlineSince) p.offlineSince = Date.now();
+      // The first turn after they vanish waits out the full grace period, in
+      // case they are only changing trains. After that the table stops
+      // holding its breath and their turns go by on a short beat.
+      const since = p.away ? (s.turnStartedAt || 0) : p.offlineSince;
+      const wait = p.away ? AWAY_BEAT_MS : grace;
+      if (Date.now() - since >= wait) {
+        p.away = true;
+        return this.autoPlay('is off the trail — their turn is played out for them.');
+      }
+    }
+
+    if (!s.turnEndsAt || Date.now() < s.turnEndsAt) return false;
     return this.autoPlay('runs out of daylight.');
   }
 
@@ -569,6 +729,7 @@ export class Engine {
           isHost: p.isHost,
           isBot: !!p.isBot,
           connected: p.connected,
+          away: !!p.away,
           nature: p.nature,
           turnsTaken: p.turnsTaken,
           env: p.env,

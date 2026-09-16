@@ -625,5 +625,236 @@ console.log('\nillegal moves');
   check('a token before its tile is refused', !!e.handle(cur, { t: 'placeToken', q: 0, r: 0 }).error);
 }
 
+
+// --- a seat leaving mid-game ------------------------------------------------
+// The turn pointer is an index into `order`. Pulling a seat out from under it
+// used to leave it pointing somewhere else -- or past the end -- so nobody was
+// the current player, every move was refused as out of turn, and the host's
+// own nudge had nobody to nudge. The game was over without ever ending.
+console.log('\nremoving a seat mid-game');
+{
+  // A seat ahead of the pointer goes: the same ranger must still be on turn.
+  const e = new Engine();
+  ['a', 'b', 'c'].forEach((n, i) => e.addPlayer(n, n.toUpperCase(), i === 0));
+  e.startGame();
+  e.state.turnIndex = 2;
+  const onTurn = e.currentPlayerId();
+  e.removePlayer('a');
+  check('somebody is still on turn', !!e.currentPlayerId(), String(e.currentPlayerId()));
+  check('and it is the same ranger as before', e.currentPlayerId() === onTurn);
+  check('the pointer is inside the table', e.state.turnIndex < e.state.order.length);
+  check('and moves are accepted again',
+    !e.handle(e.currentPlayerId(), { t: 'draft', index: 0 }).error);
+}
+{
+  // The ranger on turn goes, mid-draft: play passes on and what they were
+  // holding goes back on offer rather than out of the game.
+  const e = new Engine();
+  ['a', 'b', 'c'].forEach((n, i) => e.addPlayer(n, n.toUpperCase(), i === 0));
+  e.startGame();
+  const cur = e.currentPlayerId();
+  e.handle(cur, { t: 'draft', index: 0 });
+  check('a pair is in hand', !!e.state.pending && !e.state.display[0].tile);
+  e.removePlayer(cur);
+  check('play passed to somebody else', !!e.currentPlayerId() && e.currentPlayerId() !== cur);
+  check('nothing is left in hand', !e.state.pending);
+  check('and the turn is back at the draft', e.state.turnPhase === 'draft');
+  check('the pair they were holding is on offer again', !!e.state.display[0].tile);
+  check('all four slots are dealt', e.state.display.every((d) => !!d.tile));
+  check('and the new ranger can play', !e.handle(e.currentPlayerId(), { t: 'draft', index: 1 }).error);
+}
+{
+  // Everyone goes. There is no game left to play, so it has to end, not hang.
+  const e = new Engine();
+  e.addPlayer('a', 'A', true);
+  e.startGame();
+  e.removePlayer('a');
+  check('an empty table ends the season', e.state.phase === 'gameEnd', e.state.phase);
+}
+{
+  // Whoever leaves, from wherever, forcing must still end the game.
+  for (const pick of ['first', 'current', 'last']) {
+    const e = new Engine();
+    ['a', 'b', 'c', 'd'].forEach((n, i) => e.addPlayer(n, n.toUpperCase(), i === 0));
+    e.startGame();
+    e.state.turnIndex = 2;
+    const target = pick === 'first' ? e.state.order[0]
+      : pick === 'last' ? e.state.order[3] : e.currentPlayerId();
+    e.removePlayer(target);
+    let guard = 0;
+    while (e.state.phase === 'playing' && guard++ < 400) {
+      if (!e.currentPlayerId()) break;
+      e.forceTurn();
+    }
+    check('losing the ' + pick + ' seat still plays out to an ending',
+      e.state.phase === 'gameEnd', e.state.phase + ' after ' + guard);
+  }
+}
+
+// --- a ranger who has gone off the trail ------------------------------------
+// The turn timer is off by default, so nothing else was ever going to notice
+// that the table was waiting on somebody who had closed their laptop.
+console.log('\nwaiting on somebody who has gone');
+{
+  const e = new Engine({ dropGraceSeconds: 45 });
+  ['a', 'b'].forEach((n, i) => e.addPlayer(n, n.toUpperCase(), i === 0));
+  e.startGame();
+  const gone = e.currentPlayerId();
+  e.setConnected(gone, false);
+  check('the timer really is off', !e.state.turnEndsAt);
+  check('nothing happens while they might still come back', e.tick() === false);
+
+  e.state.players[gone].offlineSince = Date.now() - 46000;
+  check('once the grace period is up their turn is played out', e.tick() === true);
+  check('and play has moved on', e.currentPlayerId() !== gone);
+  check('their seat is still theirs', !!e.state.players[gone]);
+
+  // And it keeps moving: a table of the departed still reaches an ending.
+  let guard = 0;
+  for (const id of e.state.order) {
+    e.setConnected(id, false);
+    e.state.players[id].offlineSince = Date.now() - 60000;
+    e.state.players[id].away = true;
+  }
+  while (e.state.phase === 'playing' && guard++ < 2000) {
+    e.state.turnStartedAt = 0;   // the short beat between played-out turns
+    e.tick();
+  }
+  check('a table nobody is left at still reaches its tally',
+    e.state.phase === 'gameEnd', e.state.phase + ' after ' + guard);
+}
+{
+  const e = new Engine({ dropGraceSeconds: 45 });
+  ['a', 'b'].forEach((n, i) => e.addPlayer(n, n.toUpperCase(), i === 0));
+  e.startGame();
+  const gone = e.currentPlayerId();
+  e.setConnected(gone, false);
+  const first = e.state.players[gone].offlineSince;
+  e.setConnected(gone, false);
+  check('dropping twice does not restart the grace period',
+    e.state.players[gone].offlineSince === first);
+  e.setConnected(gone, true);
+  check('coming back clears the clock', !e.state.players[gone].offlineSince);
+  check('and they are no longer being played for', !e.state.players[gone].away);
+}
+{
+  const e = new Engine({ dropGraceSeconds: 0 });
+  ['a', 'b'].forEach((n, i) => e.addPlayer(n, n.toUpperCase(), i === 0));
+  e.startGame();
+  const gone = e.currentPlayerId();
+  e.setConnected(gone, false);
+  e.state.players[gone].offlineSince = Date.now() - 600000;
+  check('turning the grace period off leaves the turn alone', e.tick() === false);
+}
+
+// --- running the stack out --------------------------------------------------
+// Twenty turns each for six rangers is more turns than there are tiles. The
+// display emptied, every draft was refused as an empty slot, and an untimed
+// game simply stopped there.
+console.log('\nrunning the stack out');
+{
+  const e = new Engine({ turnsEach: 20 });
+  for (let i = 0; i < 6; i++) e.addPlayer('p' + i, 'P' + i, i === 0);
+  e.startGame();
+  check('more turns are asked for than the stack holds',
+    e.state.turnsEach * 6 > e.deck.length + DISPLAY_SIZE);
+
+  let guard = 0;
+  let stuck = null;
+  while (e.state.phase === 'playing' && guard++ < 400) {
+    const cur = e.currentPlayerId();
+    // Play as a human would: draft, lay, settle. No timer, no host nudging.
+    const idx = e.state.display.findIndex((d) => d.tile);
+    if (idx < 0) { stuck = 'nothing to draft on turn ' + guard; break; }
+    if (e.handle(cur, { t: 'draft', index: idx }).error) { stuck = 'draft refused'; break; }
+    const p = e.state.players[cur];
+    const spot = openHexes(p.env).find((h) => canPlaceTile(p.env, h.q, h.r));
+    if (!spot) { stuck = 'nowhere to lay a tile'; break; }
+    e.handle(cur, { t: 'placeTile', q: spot.q, r: spot.r, rot: 0 });
+    if (e.state.turnPhase === 'token') {
+      const spots = openTokenHexes(p.env, e.state.pending.token);
+      if (spots.length) e.handle(cur, { t: 'placeToken', q: spots[0].q, r: spots[0].r });
+      else e.handle(cur, { t: 'skipToken' });
+    }
+  }
+  check('the season closes rather than stopping dead',
+    e.state.phase === 'gameEnd', stuck || (e.state.phase + ' after ' + guard));
+  check('and there is a tally to show for it', !!e.state.result);
+}
+
+// --- nonsense off the wire --------------------------------------------------
+// One malformed move must not be able to throw inside a rule and leave the
+// game in a state no legal move can get it out of.
+console.log('\nnonsense off the wire');
+{
+  const e = new Engine();
+  ['a', 'b'].forEach((n, i) => e.addPlayer(n, n.toUpperCase(), i === 0));
+  e.startGame();
+  const cur = e.currentPlayerId();
+  const junk = [
+    null, undefined, 'draft', 42, [],
+    {}, { t: null }, { t: 'draft' },
+    { t: 'draft', index: 1.5 },
+    { t: 'draft', index: '2' },
+    { t: 'draft', index: -1 },
+    { t: 'draft', index: 99 },
+    { t: 'draft', index: NaN },
+    { t: 'draft', index: Infinity },
+    { t: 'draft', tileIndex: {}, tokenIndex: [] },
+    { t: 'cull', indices: 'all' },
+    { t: 'cull', indices: [1.5, '2', -3, 99] },
+    { t: 'cull', indices: { length: 1e9 } },
+    { t: 'placeTile', q: NaN, r: NaN },
+    { t: 'placeTile', q: '0', r: null, rot: 'x' },
+    { t: 'placeTile', q: 1e308, r: 1e308, rot: 1e308 },
+    { t: 'placeToken', q: undefined, r: undefined },
+    { t: 'skipToken', extra: 1 },
+    { t: '__proto__' },
+    { t: 'constructor' },
+  ];
+  let threw = null;
+  for (const m of junk) {
+    try { e.handle(cur, m); } catch (err) { threw = JSON.stringify(m) + ' -> ' + err.message; break; }
+  }
+  check('no malformed move throws inside the engine', !threw, threw || '');
+  check('and the game is still playable afterwards', e.state.phase === 'playing');
+  check('with somebody on turn', !!e.currentPlayerId());
+  // Whatever got through, the turn can still be played from wherever it is.
+  const who = e.currentPlayerId();
+  const before = e.state.players[who].turnsTaken;
+  e.forceTurn();
+  check('and a turn still completes',
+    e.state.players[who].turnsTaken === before + 1 || e.state.phase === 'gameEnd');
+}
+{
+  // A string index used to be accepted where a number was meant. It still is,
+  // but only when it names a real slot -- and never a fractional one.
+  const e = new Engine();
+  ['a', 'b'].forEach((n, i) => e.addPlayer(n, n.toUpperCase(), i === 0));
+  e.startGame();
+  const cur = e.currentPlayerId();
+  check('a fractional slot is refused', !!e.handle(cur, { t: 'draft', index: 1.5 }).error);
+  check('and nothing was taken', e.state.display.every((d) => !!d.tile));
+  check('a whole-numbered string still works', !e.handle(cur, { t: 'draft', index: '1' }).error);
+  check('from the slot it named', e.state.pending.tileIdx === 1);
+}
+
+// --- the pointer can always name somebody -----------------------------------
+console.log('\nthe turn pointer');
+{
+  const e = new Engine();
+  ['a', 'b', 'c'].forEach((n, i) => e.addPlayer(n, n.toUpperCase(), i === 0));
+  e.startGame();
+  for (const bad of [99, -4, 3, NaN, 1.5]) {
+    e.state.turnIndex = bad;
+    check('a pointer of ' + bad + ' still names a ranger',
+      !!e.state.players[e.currentPlayerId()], String(e.currentPlayerId()));
+  }
+  e.state.turnIndex = 77;
+  check('and the game can be played on from there', !!e.forceTurn().ok);
+  check('leaving the pointer somewhere real', e.state.turnIndex < e.state.order.length);
+}
+
+
 console.log('\n' + (failures ? failures + ' FAILURES' : 'all checks passed'));
 process.exit(failures ? 1 : 0);

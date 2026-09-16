@@ -17,7 +17,7 @@ concurrency:
 
 jobs:
   rules:
-    name: Rules simulation
+    name: Rules and netcode simulation
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -26,6 +26,8 @@ jobs:
           node-version: '22'
       - name: Play the rules out headlessly
         run: node tests/sim.mjs
+      - name: Drop, rejoin and flood the table
+        run: node tests/net.mjs
 
   deploy:
     name: Deploy
